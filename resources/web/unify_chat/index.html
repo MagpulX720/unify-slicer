@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Ask Claude</title>
+<style>
+:root{--bg:#1f2125;--p:#2a2d33;--l:#3a3f47;--t:#e8eaed;--d:#9aa1ab;--a:#009688}
+@media (prefers-color-scheme: light){:root{--bg:#f6f7f8;--p:#fff;--l:#d8dbe0;--t:#1d1f23;--d:#6b717a}}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--t);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{display:flex;flex-direction:column}
+header{display:flex;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--l)}header b{flex:1;color:#c58cff}
+button{background:var(--p);color:var(--t);border:1px solid var(--l);border-radius:6px;padding:5px 10px;cursor:pointer;font:inherit}
+button.pri{background:var(--a);border-color:var(--a);color:#fff;font-weight:600}button:disabled{opacity:.5}
+#log{flex:1;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.m{max-width:92%;padding:8px 10px;border-radius:10px;word-wrap:break-word}.u{align-self:flex-end;background:#1f5a44;color:#fff}.c{align-self:flex-start;background:var(--p);border:1px solid var(--l)}.e{background:#6a2328;color:#fff}
+.m pre{white-space:pre-wrap;background:#0002;padding:6px;border-radius:5px;font:12px Menlo,monospace}.m code{background:#0002;padding:0 3px;border-radius:3px}
+.ap{margin-top:8px;border-top:1px solid var(--l);padding-top:6px}.ap ul{margin:0 0 6px;padding-left:18px;font-size:12px}
+footer{display:flex;gap:6px;padding:8px;border-top:1px solid var(--l)}textarea{flex:1;resize:none;height:52px;background:var(--p);color:var(--t);border:1px solid var(--l);border-radius:6px;padding:6px;font:inherit}
+#set{display:none;padding:10px;border-bottom:1px solid var(--l);gap:6px;flex-direction:column}#set.on{display:flex}
+#set input,#set select{background:var(--p);color:var(--t);border:1px solid var(--l);border-radius:5px;padding:5px;font:inherit}
+.n{color:var(--d);font-size:12px}
+</style></head>
+<body>
+<header><b>&#10022; Claude</b><button id="ctx" title="Copy the slicer context to paste into the Claude app">Copy context</button><button id="clr">Clear</button><button id="gear">&#9881;</button></header>
+<div id="set"><label>Anthropic API key <input id="key" type="password" placeholder="sk-ant-..." style="width:100%"></label>
+<label>Model <select id="model"><option value="claude-sonnet-5-5">Claude Sonnet 5.5 (balanced)</option><option value="claude-opus-5-5">Claude Opus 5.5 (deepest)</option><option value="claude-haiku-5-5">Claude Haiku 5.5 (fastest)</option></select></label>
+<div class="n">Uses your own key from console.anthropic.com (API usage is billed separately from a Claude subscription). The key is stored in Unify Slicer's config file on this Mac. Each message includes your current process, filament and printer settings and the object list, never the model geometry.</div>
+<button class="pri" id="save">Save</button></div>
+<div id="log"></div>
+<footer><textarea id="in" placeholder="Ask about this print, an idea, or a problem... (Enter to send, Shift+Enter for a new line)"></textarea><button class="pri" id="send">Send</button></footer>
+<script>
+const $=s=>document.querySelector(s); let seq=0; const waiters={}; let history=[]; let cfg={api_key:'',model:'claude-sonnet-5-5'};
+try{history=JSON.parse(localStorage.getItem('unify_chat_hist')||'[]')}catch(e){}
+const persist=()=>{try{localStorage.setItem('unify_chat_hist',JSON.stringify(history.slice(-40)))}catch(e){}};
+function call(cmd,extra){return new Promise(res=>{const id=++seq;waiters[id]=res;const m=Object.assign({cmd,id},extra||{});
+  if(window.wx&&window.wx.postMessage)window.wx.postMessage(JSON.stringify(m));else res({type:'error',message:'App bridge not available'});});}
+window.unifyReceive=m=>{const w=waiters[m.id];if(w){delete waiters[m.id];w(m);}};
+const esc=s=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const md=s=>esc(s).replace(/```([\s\S]*?)```/g,'<pre>$1</pre>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/^#+\s*(.*)$/gm,'<b>$1</b>').replace(/^\s*[-*]\s+/gm,'&bull; ').replace(/\n/g,'<br>');
+function bubble(role,text){const b=document.createElement('div');b.className='m '+(role==='user'?'u':role==='error'?'e':'c');
+  String(text).split(/```unify-apply\s*([\s\S]*?)```/).forEach((p,i)=>{
+    if(i%2===0){if(p.trim()){const d=document.createElement('div');d.innerHTML=md(p);b.append(d);}return;}
+    let j;try{j=JSON.parse(p)}catch(e){const pre=document.createElement('pre');pre.textContent=p;b.append(pre);return;}
+    const box=document.createElement('div');box.className='ap';const ul=document.createElement('ul');
+    for(const s of Object.keys(j))for(const [k,v] of Object.entries(j[s]||{})){const li=document.createElement('li');li.textContent=s+': '+k+' -> '+(typeof v==='object'?JSON.stringify(v):v);ul.append(li);}
+    const btn=document.createElement('button');btn.className='pri';btn.textContent='Apply these changes';
+    btn.onclick=async()=>{btn.disabled=true;const r=await call('apply',{changes:JSON.stringify(j)});let res={};try{res=JSON.parse(r.result)}catch(e){}
+      btn.textContent='Applied '+(res.applied||[]).length+((res.rejected||[]).length?' / skipped '+res.rejected.join(', '):'');};
+    box.append(ul,btn);b.append(box);});
+  $('#log').append(b);$('#log').scrollTop=1e9;return b;}
+const SYS=ctx=>'You are Claude, built into "Unify Slicer", a desktop slicer for FDM 3D printers based on Snapmaker Orca / OrcaSlicer, used mainly with a Snapmaker U1 four-toolhead toolchanger. Help the user tune prints, diagnose problems from their description, and develop ideas. Be concise and practical; ask for a photo description when diagnosis needs it.\nWhen recommending setting changes, use OrcaSlicer config keys exactly as they appear in the context below and add ONE block:\n```unify-apply\n{"process": {"key": "value"}, "filament": {"key": "value"}, "printer": {"key": "value"}}\n```\nValues are strings in Orca serialized form (e.g. "0.2", "15%", "1", "gyroid"). Omit scopes you do not change. "filament" edits the filament preset currently open in the Filament tab. Only change what is needed and explain why.\nCurrent slicer state (JSON): '+ctx;
+async function send(){const t=$('#in').value.trim();if(!t)return;$('#in').value='';
+  history.push({role:'user',content:t});bubble('user',t);persist();const wait=bubble('c','...');$('#send').disabled=true;
+  try{const c=await call('get_context');const body={model:cfg.model||'claude-sonnet-5-5',max_tokens:2000,system:SYS(c.context||'{}'),messages:history.slice(-20)};
+    const r=await call('send',{body:JSON.stringify(body)});wait.remove();
+    if(r.type==='error'){history.pop();bubble('error',(r.message||'Request failed')+(r.body?'\n'+r.body.slice(0,400):''));return;}
+    let d={};try{d=JSON.parse(r.body)}catch(e){}
+    if(r.status>=300||d.error){history.pop();bubble('error',(d.error&&d.error.message)||('HTTP '+r.status));return;}
+    const txt=(d.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');history.push({role:'assistant',content:txt});bubble('c',txt);persist();
+  }finally{$('#send').disabled=false;$('#in').focus();}}
+$('#send').onclick=send;$('#in').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
+$('#gear').onclick=()=>$('#set').classList.toggle('on');
+$('#save').onclick=async()=>{cfg={api_key:$('#key').value.trim(),model:$('#model').value};await call('save_settings',cfg);$('#set').classList.remove('on');bubble('c','Connected. Ask me anything about your print.');};
+$('#clr').onclick=()=>{history=[];persist();$('#log').innerHTML='';};
+$('#ctx').onclick=async()=>{const c=await call('get_context');try{await navigator.clipboard.writeText('Unify Slicer context:\n'+c.context);$('#ctx').textContent='Copied';}catch(e){const ta=document.createElement('textarea');ta.value=c.context;document.body.append(ta);ta.select();document.execCommand('copy');ta.remove();$('#ctx').textContent='Copied';}setTimeout(()=>$('#ctx').textContent='Copy context',1500);};
+(async()=>{for(let i=0;i<30&&!(window.wx&&window.wx.postMessage);i++)await new Promise(r=>setTimeout(r,100));
+  for(const m of history)bubble(m.role==='user'?'user':'c',m.content);
+  const s=await call('get_settings');cfg={api_key:s.api_key||'',model:s.model||'claude-sonnet-5-5'};$('#key').value=cfg.api_key;$('#model').value=cfg.model;
+  if(!cfg.api_key){$('#set').classList.add('on');bubble('c','Hi! Add your Anthropic API key (gear button) and I can see your current printer, filament and process settings, diagnose problems and apply changes for you with one click.');}
+  else if(!history.length)bubble('c','Hi! I can see your current settings and objects. What are you printing?');})();
+</script></body></html>
