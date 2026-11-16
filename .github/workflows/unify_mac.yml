@@ -12,10 +12,10 @@ on:
         type: choice
         options: [ arm64, x86_64, universal ]
       runner:
-        description: 'Build machine (Intel runners are usually less busy; both can build Apple silicon apps)'
-        default: 'macos-15-intel'
+        description: 'Build machine: macos-15 = Apple silicon (needed for arm64 builds); macos-15-intel only for x86_64 builds'
+        default: 'macos-15'
         type: choice
-        options: [ macos-15-intel, macos-15 ]
+        options: [ macos-15, macos-15-intel ]
       latest_profiles:
         description: 'Pull the newest official Snapmaker profiles before building'
         type: boolean
@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   mac:
-    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 360
     env:
       ARCH: ${{ inputs.arch || 'arm64' }}
