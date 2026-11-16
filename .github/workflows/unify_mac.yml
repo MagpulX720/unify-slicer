@@ -36,17 +36,27 @@ jobs:
         run: python3 unify/apply_unify.py
 
       - name: Use newest official Snapmaker profiles
-        if: ${{ inputs.latest_profiles != false }}
+        if: ${{ github.event_name == 'push' || inputs.latest_profiles }}
         run: |
           git submodule update --init --remote submodules/Profiles
           git -C submodules/Profiles log -1 --format='Snapmaker profiles: %H %cd'
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.28.0"
 
       - name: Prepare Xcode and tools
         run: |
           sudo xcode-select -s /Applications/Xcode.app
           xcodebuild -version
-          brew install automake texinfo libtool ninja || true
-          for app in /Applications/Xcode_*.app; do sudo rm -rf "$app"; done
+          cmake --version
+          brew install automake texinfo libtool || true
+          XCODE_APP="$(cd "$(xcode-select -p)/../.." && pwd -P)"
+          for app in /Applications/Xcode_*.app; do
+            [ -e "$app" ] || continue
+            [ "$(cd "$app" && pwd -P)" = "$XCODE_APP" ] && continue
+            sudo rm -rf "$app"
+          done
           sudo rm -rf ~/Library/Developer/CoreSimulator/Caches/* || true
           df -h
 
@@ -102,7 +112,7 @@ jobs:
           files: Unify_Slicer_*.dmg
           body: |
             Unify Slicer for macOS (${{ env.ARCH }}). Built from Snapmaker Orca + OrcaSlicer with the official Snapmaker U1 profiles and Unify presets.
-            First launch: right-click the app → Open (the app is not notarized).
+            First launch: right-click the app, then Open (the app is not notarized).
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
