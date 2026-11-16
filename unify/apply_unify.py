@@ -74,4 +74,26 @@ endif()
 '''
 anchor = "# Report and record the revision only when it changes."
 edit("cmake/SyncSnapmakerProfiles.cmake", anchor, OVERLAY + anchor, "Unify Slicer: overlay")
+# Unify Slicer: adaptive bed mesh on the U1 - only probe where the first layer prints.
+# Same command Snapmaker/OrcaSlicer use upstream; limits match the U1 printer.cfg [bed_mesh] area (3..267 mm).
+MESH = r"""# Unify Slicer: adaptive bed mesh for the Snapmaker U1.
+set(_u1_mesh "BED_MESH_CALIBRATE mesh_min={adaptive_bed_mesh_min[0]},{adaptive_bed_mesh_min[1]} mesh_max={adaptive_bed_mesh_max[0]},{adaptive_bed_mesh_max[1]} ALGORITHM=[bed_mesh_algo] PROBE_COUNT={bed_mesh_probe_count[0]},{bed_mesh_probe_count[1]} ADAPTIVE=0 ADAPTIVE_MARGIN=0")
+file(GLOB _u1_machines LIST_DIRECTORIES false "${DST}/Snapmaker/machine/Snapmaker U1 (*nozzle).json")
+foreach(_mf IN LISTS _u1_machines)
+    file(READ "${_mf}" _mj)
+    string(REPLACE "BED_MESH_CALIBRATE PROBE_COUNT=11,11" "${_u1_mesh}" _mj "${_mj}")
+    file(WRITE "${_mf}" "${_mj}")
+endforeach()
+if(EXISTS "${DST}/Snapmaker/machine/fdm_U1.json")
+    file(READ "${DST}/Snapmaker/machine/fdm_U1.json" _fj)
+    string(JSON _fj SET "${_fj}" "bed_mesh_min" "\"3,3\"")
+    string(JSON _fj SET "${_fj}" "bed_mesh_max" "\"267,267\"")
+    string(JSON _fj SET "${_fj}" "bed_mesh_probe_distance" "\"25,25\"")
+    string(JSON _fj SET "${_fj}" "adaptive_bed_mesh_margin" "\"5\"")
+    file(WRITE "${DST}/Snapmaker/machine/fdm_U1.json" "${_fj}")
+endif()
+message(STATUS "Unify Slicer: adaptive bed mesh enabled for Snapmaker U1")
+
+"""
+edit("cmake/SyncSnapmakerProfiles.cmake", anchor, MESH + anchor, "Unify Slicer: adaptive bed mesh")
 print("Done")
