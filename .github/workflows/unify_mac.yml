@@ -1,0 +1,110 @@
+name: Build Unify Slicer (macOS)
+
+on:
+  push:
+    branches: [ main, unify ]
+    paths-ignore: [ 'doc/**', 'docs/**', '**.md' ]
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: 'arm64 (Apple silicon), x86_64 (Intel) or universal'
+        default: 'arm64'
+        type: choice
+        options: [ arm64, x86_64, universal ]
+      latest_profiles:
+        description: 'Pull the newest official Snapmaker profiles before building'
+        type: boolean
+        default: true
+
+concurrency:
+  group: unify-mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-15
+    timeout-minutes: 360
+    env:
+      ARCH: ${{ inputs.arch || 'arm64' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          lfs: true
+
+      - name: Apply Unify source changes
+        run: python3 unify/apply_unify.py
+
+      - name: Use newest official Snapmaker profiles
+        if: ${{ inputs.latest_profiles != false }}
+        run: |
+          git submodule update --init --remote submodules/Profiles
+          git -C submodules/Profiles log -1 --format='Snapmaker profiles: %H %cd'
+
+      - name: Prepare Xcode and tools
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
+          brew install automake texinfo libtool ninja || true
+          for app in /Applications/Xcode_*.app; do sudo rm -rf "$app"; done
+          sudo rm -rf ~/Library/Developer/CoreSimulator/Caches/* || true
+          df -h
+
+      - name: Restore dependency cache
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/deps/build
+          key: unify-deps-${{ env.ARCH }}-${{ hashFiles('deps/**') }}
+
+      - name: Build dependencies (first run only, ~1-2 h)
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          brew uninstall --ignore-dependencies zstd || true
+          ./build_release_macos.sh -dx -a "$ARCH" -t 11.3 -1
+          brew install zstd || true
+          for a in arm64 x86_64; do
+            [ -d "deps/build/$a" ] && (cd "deps/build/$a" && find . -mindepth 1 -maxdepth 1 ! -name 'OrcaSlicer_dep' -exec rm -rf {} +) || true
+          done
+
+      - name: Build Unify Slicer
+        run: ./build_release_macos.sh -s -n -x -a "$ARCH" -t 11.3 -1
+
+      - name: Package Unify Slicer.app into a DMG
+        run: |
+          set -euo pipefail
+          SRC="build/${ARCH}/Snapmaker_Orca/Snapmaker Orca.app"
+          test -d "$SRC"
+          mkdir -p dmg && rm -rf dmg/*
+          cp -R "$SRC" "dmg/Unify Slicer.app"
+          PL="dmg/Unify Slicer.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName Unify Slicer" "$PL" || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName Unify Slicer" "$PL" 2>/dev/null || /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string Unify Slicer" "$PL"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier local.unify.slicer" "$PL"
+          # ad-hoc signature (no Apple developer account): first launch needs right-click > Open
+          codesign --force --deep --sign - "dmg/Unify Slicer.app"
+          ln -s /Applications dmg/Applications
+          VER=$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          hdiutil create -volname "Unify Slicer" -srcfolder dmg -ov -format UDZO "Unify_Slicer_${ARCH}_${VER}.dmg"
+          ls -la *.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Unify_Slicer_${{ env.ARCH }}_${{ env.VER }}
+          path: Unify_Slicer_*.dmg
+
+      - name: Publish as a GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: unify-${{ env.VER }}
+          name: Unify Slicer ${{ env.VER }} (${{ env.ARCH }})
+          files: Unify_Slicer_*.dmg
+          body: |
+            Unify Slicer for macOS (${{ env.ARCH }}). Built from Snapmaker Orca + OrcaSlicer with the official Snapmaker U1 profiles and Unify presets.
+            First launch: right-click the app → Open (the app is not notarized).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+permissions:
+  contents: write
