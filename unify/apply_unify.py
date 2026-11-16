@@ -47,6 +47,14 @@ edit("src/slic3r/Utils/PresetUpdater.cpp", "void PresetUpdater::priv::sync_confi
      "    if (!isAuto_check) GUI::wxGetApp().QueueEvent(new wxCommandEvent(EVT_NO_PRESET_UPDATE));\n    return;\n",
      "Unify Slicer: bundled profiles")
 
+# The app is the only source of Snapmaker profiles (cloud update disabled), so refresh the installed copy from the
+# app every launch - otherwise profile changes in a new Unify build never reach an existing install.
+edit("src/slic3r/Utils/PresetUpdater.cpp",
+     "                        if (!version_match || (vendor_ver < resource_ver)) {\n",
+     "                        // Unify Slicer: always refresh the Snapmaker bundle from the app\n"
+     "                        if (!version_match || (vendor_ver < resource_ver) || vendor_name == PresetBundle::SM_BUNDLE) {\n",
+     "Unify Slicer: always refresh the Snapmaker bundle")
+
 # Merge Unify presets into the Snapmaker bundle after the profiles submodule is synced
 OVERLAY = r'''# Unify Slicer: overlay the Unify house presets onto the synced Snapmaker bundle
 # and register them in Snapmaker.json so they appear as system presets.
