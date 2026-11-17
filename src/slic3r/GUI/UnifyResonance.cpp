@@ -102,12 +102,17 @@ static void eval_axis(const char *name, const AxisResult &a, double s0, double s
         e.abnormal = true;
         return;
     }
+    // Judge the shaper the printer actually applied (it keeps its configured type, e.g. mzv, even when
+    // Klipper recommends another); fall back to the recommendation when the result was rejected.
     Fit f;
-    auto it = a.fits.find(a.rec_type);
+    const std::string judged = (a.has_sel && !a.rejected && a.fits.count(a.sel_type)) ? a.sel_type : a.rec_type;
+    auto it = a.fits.find(judged);
     if (it != a.fits.end())
         f = it->second;
 
-    std::string line = N + ": " + a.rec_type + " @ " + num("%.1f", a.rec_freq) + " Hz";
+    const bool        use_sel = judged == a.sel_type && a.has_sel && !a.rejected;
+    const double      jfreq   = use_sel ? a.sel_freq : a.rec_freq;
+    std::string line = N + ": " + judged + " @ " + num("%.1f", jfreq) + " Hz";
     std::string extra;
     if (f.vib >= 0.)
         extra += "vibrations " + num("%.1f", f.vib) + " %";
@@ -116,8 +121,10 @@ static void eval_axis(const char *name, const AxisResult &a, double s0, double s
     if (!extra.empty())
         line += " (" + extra + ")";
     line += ", swept " + num("%.0f", s0) + "-" + num("%.0f", s1) + " Hz @ " + num("%.2f", hz_per_sec) + " Hz/s";
-    if (a.has_sel && (a.rejected || std::abs(a.sel_freq - a.rec_freq) > 0.05 || a.sel_type != a.rec_type))
-        line += "\n     applied: " + a.sel_type + " @ " + num("%.1f", a.sel_freq) + " Hz" + (a.rejected ? " (printer's saved value)" : "");
+    if (a.rejected && a.has_sel)
+        line += "\n     applied: " + a.sel_type + " @ " + num("%.1f", a.sel_freq) + " Hz (printer's saved value)";
+    else if (use_sel && a.has_rec && (a.rec_type != a.sel_type || std::abs(a.sel_freq - a.rec_freq) > 0.05))
+        line += "\n     Klipper's top pick was " + a.rec_type + " @ " + num("%.1f", a.rec_freq) + " Hz; the printer kept its " + a.sel_type + " shaper";
     e.summary.push_back(line);
 
     if (a.rejected) {
@@ -179,6 +186,10 @@ using json = nlohmann::json;
 namespace {
 
 const char *CFG_SECTION = "unify_resonance";
+
+// Last time the monitor reached the printer (shown in the log window).
+std::string g_last_host;
+std::time_t g_last_contact = 0;
 
 std::string base_url(std::string host)
 {
@@ -497,8 +508,8 @@ private:
     {
         if (m_busy) return;
         const DynamicPrintConfig *pc = printer_config();
-        const bool enabled = cfg_bool(pc, "unify_resonance_check", false) &&
-                             (cfg_bool(pc, "unify_resonance_warn", true) || cfg_bool(pc, "unify_resonance_show_ok", true));
+        // Runs whenever a printer address is set, so a G-code sliced earlier (or with another preset) still reports.
+        const bool enabled = cfg_bool(pc, "unify_resonance_warn", true) || cfg_bool(pc, "unify_resonance_show_ok", true);
         const std::string host = cfg_string(pc, "unify_printer_host");
         if (!enabled || base_url(host).empty())
             return;
@@ -532,16 +543,36 @@ private:
         try { j = json::parse(body); } catch (...) { return; }
         if (!j.contains("result") || !j["result"].contains("gcode_store")) return;
         const json &store = j["result"]["gcode_store"];
-        const bool first  = m_last_time < 0.;
-        double     newest = m_last_time;
         if (!store.is_array()) return;
-        for (const json &item : store) {
+        g_last_host    = m_host;
+        g_last_contact = std::time(nullptr);
+        const bool first = m_last_time < 0.;
+        // On the first poll, skip old console history but pick up a check that is still running or that
+        // finished in the last 5 minutes (Unify was opened during or just after the check).
+        size_t replay_from = store.size();
+        if (first) {
+            const double now = double(std::time(nullptr));
+            for (size_t i = store.size(); i-- > 0;) {
+                const json &item = store[i];
+                if (!item.is_object() || !item.contains("message") || !item["message"].is_string() || !item.contains("time") || !item["time"].is_number())
+                    continue;
+                if (item["message"].get<std::string>().find("UNIFY_FASTCHECK_BEGIN") != std::string::npos) {
+                    // printer and computer clocks can differ a little; the check itself takes 1-3 minutes
+                    if (std::abs(now - item["time"].get<double>()) <= 8. * 60.)
+                        replay_from = i;
+                    break;
+                }
+            }
+        }
+        double newest = m_last_time;
+        for (size_t idx = 0; idx < store.size(); ++idx) {
+            const json &item = store[idx];
             if (!item.is_object() || !item.contains("time") || !item["time"].is_number() || !item.contains("message") || !item["message"].is_string())
                 continue;
             const double t = item.value("time", 0.);
             if (t <= m_last_time) continue;
             newest = std::max(newest, t);
-            if (first) continue; // don't replay checks that ran before Unify started watching
+            if (first && idx < replay_from) continue; // don't replay checks that ran before Unify started watching
             const std::string msg = item.value("message", std::string());
             size_t start = 0;
             while (start <= msg.size()) {
@@ -606,6 +637,47 @@ void unify_resonance_monitor_start()
         s_monitor = new ResonanceMonitor();
 }
 
+void unify_resonance_test_connection(const std::string &host_in, wxWindow *parent)
+{
+    const std::string url = base_url(host_in);
+    if (url.empty()) {
+        wxMessageBox(_L("Enter the printer address first (the IP you use for Mainsail or Fluidd)."), _L("Test connection"), wxOK | wxICON_WARNING, parent);
+        return;
+    }
+    wxWeakRef<wxWindow> weak(parent);
+    std::thread([url, weak]() {
+        std::string body;
+        unsigned    status = 0;
+        std::string error;
+        Http::get(url + "/server/info")
+            .timeout_connect(4)
+            .timeout_max(8)
+            .on_complete([&](std::string b, unsigned st) { body = std::move(b); status = st; })
+            .on_error([&](std::string, std::string e, unsigned st) { error = e; status = st; })
+            .perform_sync();
+        if (!wxTheApp) return;
+        wxTheApp->CallAfter([url, body, status, error, weak]() {
+            wxString msg;
+            bool     good = false;
+            if (status == 200) {
+                try {
+                    const json j = json::parse(body);
+                    const std::string state = j["result"].value("klippy_state", std::string("unknown"));
+                    msg  = wxString::Format(_L("Connected to %s.\nKlipper is %s."), W(url), W(state));
+                    good = true;
+                } catch (...) {
+                    msg = wxString::Format(_L("%s answered, but not like Moonraker. Check the address."), W(url));
+                }
+            } else if (status != 0) {
+                msg = wxString::Format(_L("%s answered with HTTP %u. Check the address."), W(url), status);
+            } else {
+                msg = wxString::Format(_L("Could not reach %s.\n%s\n\nCheck the IP address and that the printer is on the same network."), W(url), W(error));
+            }
+            wxMessageBox(msg, _L("Test connection"), wxOK | (good ? wxICON_INFORMATION : wxICON_WARNING), weak.get());
+        });
+    }).detach();
+}
+
 void unify_resonance_show_log()
 {
     json     log = load_json("log", json::array());
@@ -614,7 +686,18 @@ void unify_resonance_show_log()
         for (auto it = log.rbegin(); it != log.rend(); ++it)
             if (it->is_string()) text += W(it->get<std::string>()) + "\n";
     if (text.empty())
-        text = _L("No resonance checks have been logged yet. Turn on the resonance fast check and set the printer address in Printer settings > Basic information.");
+        text = _L("No resonance checks have been logged yet. Turn on the resonance fast check and set the printer address in Printer settings > Basic information.") + "\n";
+    wxString status;
+    if (g_last_contact != 0) {
+        char buf[32];
+        std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&g_last_contact));
+        status = wxString::Format(_L("Printer %s, last contact %s."), W(g_last_host), wxString(buf));
+    } else {
+        const std::string host = cfg_string(printer_config(), "unify_printer_host");
+        status = host.empty() ? _L("No printer address set, so Unify is not watching for results.")
+                              : wxString::Format(_L("Printer %s has not answered yet. Check the address with Test connection."), W(host));
+    }
+    text = status + "\n\n" + text;
     wxMessageBox(text, _L("Resonance check log (Unify)"), wxOK | wxICON_INFORMATION, wxGetApp().mainframe);
 }
 
