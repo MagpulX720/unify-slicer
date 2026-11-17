@@ -11,6 +11,7 @@
 #include "libslic3r/UnifyBridge.hpp"
 
 #include <imgui/imgui.h>
+#include <boost/log/trivial.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -34,7 +35,7 @@ constexpr double MIN_LIST_AREA_MM2 = 2.0; // don't list specks
 
 void jump_to(IMSlider *slider, const std::vector<double> &zs, double z)
 {
-    if (slider == nullptr || zs.empty())
+    if (slider == nullptr || zs.empty() || slider->GetMaxValue() <= slider->GetMinValue())
         return;
     auto it  = std::lower_bound(zs.begin(), zs.end(), z - 1e-4);
     int  idx = it == zs.end() ? int(zs.size()) - 1 : int(it - zs.begin());
@@ -49,25 +50,34 @@ void unify_bridge_check_show() { g_hidden = false; }
 void unify_bridge_check_render(IMSlider *layers_slider, const std::vector<double> &layers_zs)
 {
     Plater *plater = wxGetApp().plater();
-    if (plater == nullptr || layers_slider == nullptr || layers_zs.empty())
+    if (plater == nullptr)
         return;
     const Print &print = plater->fff_print();
 
     std::vector<Row> rows;
-    size_t           flagged = 0;
+    size_t           flagged = 0, n_objects = 0, n_done = 0;
     for (const PrintObject *po : print.objects()) {
-        // Only read the layers once this object's infill preparation has finished (not while re-slicing).
+        ++n_objects;
+        // Only read an object's report once its infill preparation has finished (not while re-slicing).
         if (!po->is_step_done(posPrepareInfill))
-            return;
+            continue;
+        ++n_done;
         const std::string name = po->model_object() ? po->model_object()->name : std::string();
-        for (const Layer *layer : po->layers())
-            for (const LayerRegion *layerm : layer->regions())
-                for (const UnifyBridgeInfo &b : layerm->unify_bridges) {
-                    if (b.area_mm2 < MIN_LIST_AREA_MM2)
-                        continue;
-                    rows.push_back({ name, b });
-                    flagged += b.flagged ? 1 : 0;
-                }
+        for (const UnifyBridgeInfo &b : po->unify_bridge_report) {
+            if (b.area_mm2 < MIN_LIST_AREA_MM2)
+                continue;
+            rows.push_back({ name, b });
+            flagged += b.flagged ? 1 : 0;
+        }
+    }
+    {   // log what the window sees whenever it changes (Help > Show Configuration Folder > log)
+        static std::string last;
+        const std::string now = std::to_string(n_objects) + "/" + std::to_string(n_done) + "/" + std::to_string(rows.size()) + "/" +
+                                std::to_string(flagged) + "/" + std::to_string(layers_zs.size()) + "/" + std::to_string(int(g_hidden));
+        if (now != last) {
+            last = now;
+            BOOST_LOG_TRIVIAL(info) << "Unify bridge check: objects/done/rows/flagged/zs/hidden = " << now;
+        }
     }
     if (rows.empty())
         return;
@@ -89,7 +99,8 @@ void unify_bridge_check_render(IMSlider *layers_slider, const std::vector<double
 
     ImGuiWrapper &imgui = *wxGetApp().imgui();
     const float   em    = imgui.scaled(1.f);
-    ImGui::SetNextWindowPos(ImVec2(1.0f * em, 6.0f * em), ImGuiCond_FirstUseEver);
+    // Top left, below the plate thumbnail (the legend sits top right).
+    ImGui::SetNextWindowPos(ImVec2(1.0f * em, 9.0f * em), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(30.f * em, 16.f * em), ImGuiCond_FirstUseEver);
     // Collapsed when there is nothing to look at, open when something is flagged.
     ImGui::SetNextWindowCollapsed(flagged == 0, ImGuiCond_Appearing);
@@ -101,7 +112,7 @@ void unify_bridge_check_render(IMSlider *layers_slider, const std::vector<double
         std::snprintf(title, sizeof(title), "%s (%zu)###unify_bridge_check", _u8L("Bridge check").c_str(), rows.size());
 
     bool open = true;
-    if (ImGui::Begin(title, &open, ImGuiWindowFlags_NoFocusOnAppearing)) {
+    if (ImGui::Begin(title, &open, ImGuiWindowFlags_None)) {
         if (flagged > 0) {
             std::string msg = _u8L("Longer than %1% mm or not anchored at both ends are listed first. Click a bridge to show its layer.");
             const std::string span = std::to_string(int(unify_bridge::WARN_SPAN_MM));

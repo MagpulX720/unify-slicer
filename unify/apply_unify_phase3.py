@@ -37,6 +37,15 @@ edit("src/slic3r/GUI/Tab.cpp",
      "        optgroup->append_single_option_line(\"unify_bridge_smart_direction\"); // Unify Slicer (issue #3)\n",
      "append_single_option_line(\"unify_bridge_smart_direction\")")
 
+# --- PrintObject keeps a copy of the bridge report for the Preview window ---
+edit("src/libslic3r/Print.hpp", '#include "Slicing.hpp"\n', '#include "Slicing.hpp"\n#include "UnifyBridgeInfo.hpp"\n', '#include "UnifyBridgeInfo.hpp"')
+edit("src/libslic3r/Print.hpp",
+     "    const SlicingParameters&    slicing_parameters() const { return m_slicing_params; }\n",
+     "    const SlicingParameters&    slicing_parameters() const { return m_slicing_params; }\n"
+     "    // Unify Slicer: external bridge areas of all layers, filled after process_external_surfaces() (issue #3)\n"
+     "    UnifyBridgeInfos            unify_bridge_report;\n",
+     "UnifyBridgeInfos            unify_bridge_report;")
+
 # --- per layer region: what was decided for each bridge area ---
 edit("src/libslic3r/Layer.hpp", '#include "SurfaceCollection.hpp"\n',
      '#include "SurfaceCollection.hpp"\n#include "UnifyBridgeInfo.hpp"\n', '#include "UnifyBridgeInfo.hpp"')
@@ -93,6 +102,13 @@ edit("src/libslic3r/PrintObject.cpp",
      """        BOOST_LOG_TRIVIAL(debug) << "Processing external surfaces for region " << region_id << " in parallel - end";
     }
 
+    // Unify Slicer: copy of all bridge areas for the Preview "Bridge check" window (issue #3)
+    this->unify_bridge_report.clear();
+    for (const Layer *layer : m_layers)
+        for (const LayerRegion *layerm : layer->regions())
+            this->unify_bridge_report.insert(this->unify_bridge_report.end(), layerm->unify_bridges.begin(), layerm->unify_bridges.end());
+    BOOST_LOG_TRIVIAL(info) << "Unify bridge report: " << this->model_object()->name << " bridges=" << this->unify_bridge_report.size();
+
     // Unify Slicer: long / unanchored bridge warning (issue #3). Not shown with supports on (they may hold the bridge).
     if (!this->has_support_material()) {
         size_t n_flagged = 0;
@@ -107,7 +123,7 @@ edit("src/libslic3r/PrintObject.cpp",
                     }
         if (n_flagged > 0) {
             std::string msg = Slic3r::format(L("%1%: %2% bridge areas are longer than %3% mm or not anchored at both ends (first at Z %4% mm). "
-                                               "Check them in Preview > Bridge check."),
+                                               "Open the Preview: the Bridge check window lists them (or use Calibration > Bridge check (Unify))."),
                                              this->model_object()->name, n_flagged, int(unify_bridge::WARN_SPAN_MM), Slic3r::float_to_string_decimal_point(first_z, 2));
             this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL, msg);
         }
@@ -129,3 +145,23 @@ edit("src/slic3r/GUI/GLCanvas3D.cpp",
      "    // Unify Slicer: Bridge check window (issue #3)\n"
      "    unify_bridge_check_render(m_gcode_viewer.get_layers_slider(), m_gcode_viewer.get_layers_zs());\n",
      "unify_bridge_check_render(")
+
+# --- Calibration > Bridge check (Unify): reopen the window and switch to Preview ---
+edit("src/slic3r/GUI/MainFrame.cpp", '#include "UnifyResonance.hpp"\n',
+     '#include "UnifyResonance.hpp"\n#include "UnifyBridgeCheck.hpp"\n', '#include "UnifyBridgeCheck.hpp"')
+edit("src/slic3r/GUI/MainFrame.cpp",
+     "    // Unify Slicer: resonance check log (top bar)\n",
+     "    // Unify Slicer: bridge check (top bar)\n"
+     "    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L(\"Bridge check (Unify)\"), _L(\"Show the bridge list in the Preview\"),\n"
+     "        [this](wxCommandEvent&) { unify_bridge_check_show(); select_tab(size_t(tpPreview)); }, \"\", nullptr,\n"
+     "        []() { return true; }, this);\n"
+     "    // Unify Slicer: resonance check log (top bar)\n",
+     "Unify Slicer: bridge check (top bar)")
+edit("src/slic3r/GUI/MainFrame.cpp",
+     "    // Unify Slicer: resonance check log (menu bar)\n",
+     "    // Unify Slicer: bridge check (menu bar)\n"
+     "    append_menu_item(calib_menu, wxID_ANY, _L(\"Bridge check (Unify)\"), _L(\"Show the bridge list in the Preview\"),\n"
+     "        [this](wxCommandEvent&) { unify_bridge_check_show(); select_tab(size_t(tpPreview)); }, \"\", nullptr,\n"
+     "        []() { return true; }, this);\n"
+     "    // Unify Slicer: resonance check log (menu bar)\n",
+     "Unify Slicer: bridge check (menu bar)")
