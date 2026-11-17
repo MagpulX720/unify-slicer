@@ -374,6 +374,19 @@ message(STATUS "Unify Slicer: resonance fast check added to Snapmaker U1 start G
 """
 edit("cmake/SyncSnapmakerProfiles.cmake", anchor, FASTCHECK + anchor, "Unify Slicer: optional resonance fast check")
 
+# Unify Slicer (issue #10): show all seven U1 build plates (incl. Cool Steel Plate) by default.
+BEDTYPES = r"""# Unify Slicer: all build plates for the Snapmaker U1 (support_multi_bed_types on).
+file(GLOB _u1_machines_bt LIST_DIRECTORIES false "${DST}/Snapmaker/machine/Snapmaker U1 (*nozzle).json" "${DST}/Snapmaker/machine/fdm_U1.json")
+foreach(_mf IN LISTS _u1_machines_bt)
+    file(READ "${_mf}" _mj)
+    string(JSON _mj SET "${_mj}" "support_multi_bed_types" "\"1\"")
+    file(WRITE "${_mf}" "${_mj}")
+endforeach()
+message(STATUS "Unify Slicer: all build plate types enabled for Snapmaker U1")
+
+"""
+edit("cmake/SyncSnapmakerProfiles.cmake", anchor, BEDTYPES + anchor, "Unify Slicer: all build plates")
+
 # ---------------------------------------------------------------------------------------------
 # Unify Slicer: build stamp + splash screen
 # ---------------------------------------------------------------------------------------------
@@ -482,8 +495,8 @@ for _step, _vals in ((10, _OH10), (5, _OH5)):
             f'    def->label = "{_a0}-{_a1}\\u00B0";\n'
             f'    def->full_label = L("Overhang speed") + std::string(" {_a0}-{_a1}\\u00B0");\n'
             f'    def->category = L("Speed");\n'
-            f'    def->tooltip = L("Speed for overhangs in this angle range. 0 = normal wall speed. Steeper rows are never printed faster than shallower ones.");\n'
-            f'    def->sidetext = L("mm/s (0 = normal)");\n'
+            f'    def->tooltip = L("Speed for overhangs in this angle range. 0 = use the normal wall speed. Steeper rows are never printed faster than shallower ones.");\n'
+            f'    def->sidetext = L("mm/s");\n'
             f'    def->min = 0;\n'
             f'    def->max = 1000;\n'
             f'    def->mode = comAdvanced;\n'
@@ -575,9 +588,11 @@ edit("src/libslic3r/GCode.cpp",
      "\n        new_points = m_extrusion_quality_estimator.estimate_extrusion_quality(path, overhang_overlap_levels, dynamic_overhang_speeds,",
      _GC_OH + "\n        new_points = m_extrusion_quality_estimator.estimate_extrusion_quality(path, overhang_overlap_levels, dynamic_overhang_speeds,",
      "Unify Slicer: overhang speed by angle (issue #2)")
-_TAB_OH = r'''        // Unify Slicer: overhang speed by angle (issue #2)
-        optgroup->append_single_option_line("unify_overhang_angle_mode");
-        optgroup->append_single_option_line("unify_overhang_autofill");
+_TAB_OH = r'''        // Unify Slicer: overhang speed by angle (issue #2), in its own groups so the copy button
+        // (a full-width line, which an options group always puts last) sits right under Auto-fill (issue #8)
+        auto unify_oh_og = page->new_optgroup(L("Overhang speed by angle"));
+        unify_oh_og->append_single_option_line("unify_overhang_angle_mode");
+        unify_oh_og->append_single_option_line("unify_overhang_autofill");
         {
             Line fill_line = { "", "" };
             fill_line.full_width = 1;
@@ -614,12 +629,13 @@ _TAB_OH = r'''        // Unify Slicer: overhang speed by angle (issue #2)
                 sizer->Add(btn, 0, wxALL, 2);
                 return sizer;
             };
-            optgroup->append_line(fill_line);
+            unify_oh_og->append_line(fill_line);
         }
+        auto unify_oh_rows = page->new_optgroup(L("Overhang speed table"));
         for (int i = 1; i <= unify_overhang::ROWS_COARSE; ++i)
-            optgroup->append_single_option_line("unify_ohs10_r" + std::to_string(i));
+            unify_oh_rows->append_single_option_line("unify_ohs10_r" + std::to_string(i));
         for (int i = 1; i <= unify_overhang::ROWS_FINE; ++i)
-            optgroup->append_single_option_line("unify_ohs5_r" + std::to_string(i));
+            unify_oh_rows->append_single_option_line("unify_ohs5_r" + std::to_string(i));
 '''
 edit("src/slic3r/GUI/Tab.cpp", '#include "Tab.hpp"\n', '#include "Tab.hpp"\n#include "libslic3r/UnifyOverhang.hpp"\n#include <wx/button.h>\n', '#include "libslic3r/UnifyOverhang.hpp"')
 edit("src/slic3r/GUI/Tab.cpp",
@@ -703,19 +719,35 @@ edit("src/slic3r/GUI/Tab.cpp",
      "        optgroup->append_single_option_line(\"unify_resonance_check_time\");\n",
      "        optgroup->append_single_option_line(\"unify_resonance_check_time\");\n"
      "        optgroup->append_single_option_line(\"unify_printer_host\");\n"
+     "        {   // Unify Slicer: Test connection (issue #1)\n"
+     "            Line test_line = { \"\", \"\" };\n"
+     "            test_line.full_width = 1; // widget-only lines must be full width (no option attached)\n"
+     "            test_line.widget = [this](wxWindow* parent) {\n"
+     "                auto* btn = new wxButton(parent, wxID_ANY, _L(\"Test connection\"));\n"
+     "                btn->SetToolTip(_L(\"Checks that Unify can reach the printer at this address.\"));\n"
+     "                btn->Bind(wxEVT_BUTTON, [this, btn](wxCommandEvent&) {\n"
+     "                    unify_resonance_test_connection(m_config->opt_string(\"unify_printer_host\"), btn);\n"
+     "                });\n"
+     "                auto* sizer = new wxBoxSizer(wxHORIZONTAL);\n"
+     "                sizer->Add(btn, 0, wxALL, 2);\n"
+     "                return sizer;\n"
+     "            };\n"
+     "            optgroup->append_line(test_line);\n"
+     "        }\n"
      "        optgroup->append_single_option_line(\"unify_resonance_show_ok\");\n"
      "        optgroup->append_single_option_line(\"unify_resonance_warn\");\n",
      "append_single_option_line(\"unify_printer_host\")")
 edit("src/slic3r/GUI/Tab.cpp",
      "        toggle_line(\"unify_resonance_check_time\", m_config->opt_bool(\"unify_resonance_check\"));\n",
      "        toggle_line(\"unify_resonance_check_time\", m_config->opt_bool(\"unify_resonance_check\"));\n"
-     "        for (auto el : {\"unify_printer_host\", \"unify_resonance_show_ok\", \"unify_resonance_warn\"})\n"
-     "            toggle_line(el, m_config->opt_bool(\"unify_resonance_check\"));\n",
-     "for (auto el : {\"unify_printer_host\"")
+     "        // Unify Slicer: printer address and result options stay visible (watching works for any G-code)\n",
+     "printer address and result options stay visible")
 edit("src/slic3r/CMakeLists.txt", "    GUI/UnifyCalibration.cpp\n",
      "    GUI/UnifyCalibration.cpp\n    GUI/UnifyResonance.hpp\n    GUI/UnifyResonance.cpp\n    GUI/UnifyBuildInfo.hpp\n", "UnifyResonance.cpp")
 edit("src/slic3r/GUI/MainFrame.cpp", '#include "UnifyCalibration.hpp"\n',
      '#include "UnifyCalibration.hpp"\n#include "UnifyResonance.hpp"\n', '#include "UnifyResonance.hpp"')
+edit("src/slic3r/GUI/Tab.cpp", '#include "libslic3r/UnifyOverhang.hpp"\n',
+     '#include "libslic3r/UnifyOverhang.hpp"\n#include "UnifyResonance.hpp"\n', '#include "UnifyResonance.hpp"')
 edit("src/slic3r/GUI/MainFrame.cpp",
      "    // help\n    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L(\"Tutorial\")",
      "    // Unify Slicer: resonance check log (top bar)\n"
@@ -734,5 +766,103 @@ edit("src/slic3r/GUI/MainFrame.cpp",
      "        []() { return true; }, this);\n\n"
      "    m_menubar->Append(calib_menu,wxString::Format(\"&%s\", _L(\"Calibration\")));\n",
      "Unify Slicer: resonance check log (menu bar)")
+
+# ---------------------------------------------------------------------------------------------
+# Unify Slicer phase 3, #7: auto adaptive layer height for overhangs only
+# ---------------------------------------------------------------------------------------------
+_OL_KEYS = ["unify_overhang_layers", "unify_overhang_layers_min"]
+edit("src/libslic3r/PrintConfig.hpp",
+     "    ((ConfigOptionFloat,               layer_height))\n    ((ConfigOptionFloat,               mmu_segmented_region_max_width))\n",
+     "    ((ConfigOptionFloat,               layer_height))\n"
+     "    // Unify Slicer: thinner layers at overhangs (issue #7)\n"
+     "    ((ConfigOptionBool,                unify_overhang_layers))\n"
+     "    ((ConfigOptionFloat,               unify_overhang_layers_min))\n"
+     "    ((ConfigOptionFloat,               mmu_segmented_region_max_width))\n",
+     "unify_overhang_layers))")
+edit("src/libslic3r/PrintConfig.cpp",
+     "    def = this->add(\"printable_height\", coFloat);\n",
+     r"""    // Unify Slicer: auto adaptive layer height for overhangs only (issue #7)
+    def = this->add("unify_overhang_layers", coBool);
+    def->label = L("Thinner layers at overhangs");
+    def->category = L("Quality");
+    def->tooltip = L("Automatically prints thinner layers where the model has overhangs (40 degrees from vertical and steeper), "
+                     "down to the minimum below at about 70 degrees, and the normal layer height everywhere else. Flat ceilings and "
+                     "bridges, and very small overhangs, are left alone. The height ramps in and out over a few layers. "
+                     "Objects with a manually edited variable layer height or height range modifiers keep their own layers. "
+                     "Not used with a prime tower and more than one object.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("unify_overhang_layers_min", coFloat);
+    def->label = L("Thinnest overhang layer");
+    def->category = L("Quality");
+    def->tooltip = L("Thinnest layer used at steep overhangs. The thickest is always the layer height above. "
+                     "It never goes below a safe floor: the larger of the printer's Min layer height and 20% of the nozzle "
+                     "diameter (0.08 mm on a 0.4 mm nozzle). Lower values are raised to that floor when slicing.");
+    def->sidetext = "mm";
+    def->min = 0.04;
+    def->max = 1.;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.12));
+
+    def = this->add("printable_height", coFloat);
+""",
+     "this->add(\"unify_overhang_layers\", coBool)")
+edit("src/libslic3r/Preset.cpp",
+     "    \"layer_height\", \"initial_layer_print_height\", \"wall_loops\",",
+     "    \"layer_height\", \"initial_layer_print_height\", \"unify_overhang_layers\", \"unify_overhang_layers_min\", \"wall_loops\",",
+     "\"unify_overhang_layers\", \"unify_overhang_layers_min\"")
+edit("src/libslic3r/PrintObject.cpp",
+     "               opt_key == \"layer_height\"\n            || opt_key == \"dithering_z_step_size\"\n",
+     "               opt_key == \"layer_height\"\n            || opt_key == \"unify_overhang_layers\"\n            || opt_key == \"unify_overhang_layers_min\"\n            || opt_key == \"dithering_z_step_size\"\n",
+     "opt_key == \"unify_overhang_layers\"")
+edit("src/libslic3r/PrintObject.cpp", '#include "Print.hpp"\n', '#include "Print.hpp"\n#include "UnifyOverhangLayers.hpp"\n', '#include "UnifyOverhangLayers.hpp"')
+edit("src/libslic3r/PrintObject.cpp",
+     "        layer_height_profile = layer_height_profile_from_ranges(slicing_parameters, *ranges_to_use);\n        // The layer height profile is already compressed.\n        updated = true;\n",
+     "        layer_height_profile = layer_height_profile_from_ranges(slicing_parameters, *ranges_to_use);\n"
+     + r"""        // Unify Slicer: thinner layers at overhangs (issue #7). Only when the object has no manual profile
+        // (handled above) and no height range modifiers.
+        if (!has_dithering_ranges && model_object.layer_config_ranges.empty() && print_object != nullptr &&
+            print_object->config().unify_overhang_layers.value && print_object->print() != nullptr) {
+            const Print &print = *print_object->print();
+            if (!(print.has_wipe_tower() && print.objects().size() > 1)) {
+                const PrintConfig &pc    = print.config();
+                double             floor = unify_overhang_layers::FLOOR_ABS_MM;
+                for (size_t i = 0; i < pc.nozzle_diameter.values.size(); ++i)
+                    floor = std::max(floor, unify_overhang_layers::safe_floor(pc.min_layer_height.get_at(i), pc.nozzle_diameter.get_at(i)));
+                const double hmax = slicing_parameters.layer_height;
+                const double hmin = std::max({ print_object->config().unify_overhang_layers_min.value, floor, slicing_parameters.min_layer_height });
+                std::vector<unify_overhang_layers::Mesh> meshes;
+                for (const ModelVolume *v : model_object.volumes)
+                    if (v->is_model_part())
+                        meshes.push_back({ &v->mesh().its, print_object->trafo() * v->get_matrix() });
+                std::vector<coordf_t> unify_profile = unify_overhang_layers::make_profile(slicing_parameters, meshes, hmin, hmax);
+                if (!unify_profile.empty())
+                    layer_height_profile = std::move(unify_profile);
+            }
+        }
+        // The layer height profile is already compressed.
+        updated = true;
+""",
+     "thinner layers at overhangs (issue #7). Only when")
+edit("src/slic3r/GUI/Tab.cpp",
+     "        optgroup->append_single_option_line(\"initial_layer_print_height\",\"quality_settings_layer_height\");\n",
+     "        optgroup->append_single_option_line(\"initial_layer_print_height\",\"quality_settings_layer_height\");\n"
+     "        // Unify Slicer: thinner layers at overhangs (issue #7)\n"
+     "        optgroup->append_single_option_line(\"unify_overhang_layers\");\n"
+     "        optgroup->append_single_option_line(\"unify_overhang_layers_min\");\n",
+     "append_single_option_line(\"unify_overhang_layers\")")
+edit("src/slic3r/GUI/ConfigManipulation.cpp",
+     "    {   // Unify Slicer: overhang speed by angle (issue #2)\n",
+     "    // Unify Slicer: thinner layers at overhangs (issue #7)\n"
+     "    toggle_line(\"unify_overhang_layers_min\", config->opt_bool(\"unify_overhang_layers\"));\n"
+     "    {   // Unify Slicer: overhang speed by angle (issue #2)\n",
+     "toggle_line(\"unify_overhang_layers_min\"")
+
+
+# Unify Slicer phase 3 bridge work lives in its own file (keeps this one stable).
+_p3 = ROOT / "unify" / "apply_unify_phase3.py"
+if _p3.exists():
+    exec(compile(_p3.read_text(encoding="utf-8"), str(_p3), "exec"))
 
 print("Done")
