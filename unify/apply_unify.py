@@ -29,16 +29,6 @@ edit("src/slic3r/GUI/GUI_App.cpp", "    SetAppName(SLIC3R_APP_KEY);\n",
      "    // Unify Slicer: separate settings folder so it never clashes with Snapmaker Orca\n    SetAppName(\"Unify_Slicer\");\n",
      'SetAppName("Unify_Slicer")')
 
-# Ask Claude dialog: sources + Help menu entry
-edit("src/slic3r/CMakeLists.txt", "    GUI/WebPreprintDialog.cpp\n",
-     "    GUI/WebPreprintDialog.cpp\n    GUI/UnifyChatDialog.hpp\n    GUI/UnifyChatDialog.cpp\n", "UnifyChatDialog.cpp")
-edit("src/slic3r/GUI/MainFrame.cpp", '#include "MainFrame.hpp"\n', '#include "MainFrame.hpp"\n#include "UnifyChatDialog.hpp"\n', '#include "UnifyChatDialog.hpp"')
-edit("src/slic3r/GUI/MainFrame.cpp", "    wxMenu* helpMenu = new wxMenu();\n",
-     "    wxMenu* helpMenu = new wxMenu();\n\n    // Unify Slicer: built-in Claude assistant\n"
-     "    append_menu_item(helpMenu, wxID_ANY, _L(\"Ask Claude...\"), _L(\"Chat with Claude about your print and apply suggested settings\"),\n"
-     "        [](wxCommandEvent&) { UnifyChatDialog::show_dialog(); });\n    helpMenu->AppendSeparator();\n",
-     "UnifyChatDialog::show_dialog")
-
 # Profiles ship inside the app (official Snapmaker set + Unify presets): skip the Snapmaker cloud profile update,
 # which would replace the bundled set and remove the Unify presets.
 edit("src/slic3r/Utils/PresetUpdater.cpp", "void PresetUpdater::priv::sync_config(bool isAuto_check)\n{\n",
@@ -105,10 +95,10 @@ message(STATUS "Unify Slicer: adaptive bed mesh enabled for Snapmaker U1")
 """
 edit("cmake/SyncSnapmakerProfiles.cmake", anchor, MESH + anchor, "Unify Slicer: adaptive bed mesh")
 # Unify Slicer: Calibration > Wall direction test (issue #4). Sources + menu entries (Windows/Linux top bar and macOS menu bar).
-edit("src/slic3r/CMakeLists.txt", "    GUI/UnifyChatDialog.cpp\n",
-     "    GUI/UnifyChatDialog.cpp\n    GUI/UnifyCalibration.hpp\n    GUI/UnifyCalibration.cpp\n", "UnifyCalibration.cpp")
-edit("src/slic3r/GUI/MainFrame.cpp", '#include "UnifyChatDialog.hpp"\n',
-     '#include "UnifyChatDialog.hpp"\n#include "UnifyCalibration.hpp"\n', '#include "UnifyCalibration.hpp"')
+edit("src/slic3r/CMakeLists.txt", "    GUI/WebPreprintDialog.cpp\n",
+     "    GUI/WebPreprintDialog.cpp\n    GUI/UnifyCalibration.hpp\n    GUI/UnifyCalibration.cpp\n", "UnifyCalibration.cpp")
+edit("src/slic3r/GUI/MainFrame.cpp", '#include "MainFrame.hpp"\n',
+     '#include "MainFrame.hpp"\n#include "UnifyCalibration.hpp"\n', '#include "UnifyCalibration.hpp"')
 edit("src/slic3r/GUI/MainFrame.cpp",
      "    // help\n    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L(\"Tutorial\")",
      "    // Unify Slicer: wall direction test (top bar)\n"
@@ -315,16 +305,6 @@ edit("src/slic3r/GUI/Tab.cpp",
      "        optgroup->append_single_option_line(\"wall_direction_inner\");\n"
      "        optgroup->append_single_option_line(\"wall_direction_holes\");\n",
      "append_single_option_line(\"wall_direction_alternate_layers\")")
-
-# --- #2 Arc overhangs: clearer name for Orca's "Extra perimeters on overhangs" ---
-edit("src/libslic3r/PrintConfig.cpp",
-     "    def->label = L(\"Extra perimeters on overhangs\");\n"
-     "    def->category = L(\"Quality\");\n"
-     "    def->tooltip = L(\"Create additional perimeter paths over steep overhangs and areas where bridges cannot be anchored.\");\n",
-     "    def->label = L(\"Arc overhangs (extra perimeters on overhangs)\");\n"
-     "    def->category = L(\"Quality\");\n"
-     "    def->tooltip = L(\"Prints steep overhangs as arcs of extra perimeters anchored to the layer below, so they print without supports. Also covers areas where bridges cannot be anchored. Slower on those areas and can leave a rougher underside.\");\n",
-     "Arc overhangs (extra perimeters on overhangs)")
 
 # --- #1 Snapmaker U1 resonance fast check: printer settings + start G-code block ---
 edit("src/libslic3r/PrintConfig.hpp",
