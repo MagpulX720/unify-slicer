@@ -104,4 +104,27 @@ message(STATUS "Unify Slicer: adaptive bed mesh enabled for Snapmaker U1")
 
 """
 edit("cmake/SyncSnapmakerProfiles.cmake", anchor, MESH + anchor, "Unify Slicer: adaptive bed mesh")
+# Unify Slicer: Calibration > Wall direction test (issue #4). Sources + menu entries (Windows/Linux top bar and macOS menu bar).
+edit("src/slic3r/CMakeLists.txt", "    GUI/UnifyChatDialog.cpp\n",
+     "    GUI/UnifyChatDialog.cpp\n    GUI/UnifyCalibration.hpp\n    GUI/UnifyCalibration.cpp\n", "UnifyCalibration.cpp")
+edit("src/slic3r/GUI/MainFrame.cpp", '#include "UnifyChatDialog.hpp"\n',
+     '#include "UnifyChatDialog.hpp"\n#include "UnifyCalibration.hpp"\n', '#include "UnifyCalibration.hpp"')
+edit("src/slic3r/GUI/MainFrame.cpp",
+     "    // help\n    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L(\"Tutorial\")",
+     "    // Unify Slicer: wall direction test (top bar)\n"
+     "    m_topbar->GetCalibMenu()->AppendSeparator();\n"
+     "    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L(\"Wall direction (Unify)\"), _L(\"Compare wall direction options on six towers\"),\n"
+     "        [this](wxCommandEvent&) { if (m_plater) unify_calib_wall_direction(m_plater); }, \"\", nullptr,\n"
+     "        [this]() {return m_plater->is_view3D_shown();; }, this);\n\n"
+     "    // help\n    append_menu_item(m_topbar->GetCalibMenu(), wxID_ANY, _L(\"Tutorial\")",
+     "Unify Slicer: wall direction test (top bar)")
+edit("src/slic3r/GUI/MainFrame.cpp",
+     "    m_menubar->Append(calib_menu,wxString::Format(\"&%s\", _L(\"Calibration\")));\n",
+     "    // Unify Slicer: wall direction test (menu bar)\n"
+     "    calib_menu->AppendSeparator();\n"
+     "    append_menu_item(calib_menu, wxID_ANY, _L(\"Wall direction (Unify)\"), _L(\"Compare wall direction options on six towers\"),\n"
+     "        [this](wxCommandEvent&) { if (m_plater) unify_calib_wall_direction(m_plater); }, \"\", nullptr,\n"
+     "        [this]() {return m_plater->is_view3D_shown();; }, this);\n\n"
+     "    m_menubar->Append(calib_menu,wxString::Format(\"&%s\", _L(\"Calibration\")));\n",
+     "Unify Slicer: wall direction test (menu bar)")
 print("Done")
