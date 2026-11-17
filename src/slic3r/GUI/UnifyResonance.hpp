@@ -10,12 +10,16 @@
 #include <string>
 #include <vector>
 
+class wxWindow;
+
 namespace Slic3r { namespace GUI {
 
 // Starts the background console watcher (safe to call more than once).
 void unify_resonance_monitor_start();
 // Shows the log of recent resonance checks.
 void unify_resonance_show_log();
+// Checks that Moonraker answers at the given address and shows the result (issue #1).
+void unify_resonance_test_connection(const std::string &host, wxWindow *parent);
 
 namespace unify_res {
 
