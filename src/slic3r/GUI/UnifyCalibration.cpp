@@ -13,7 +13,6 @@
 #include "I18N.hpp"
 #include "libslic3r/Model.hpp"
 #include "libslic3r/PrintConfig.hpp"
-#include "libslic3r/PresetBundle.hpp"
 
 #include <boost/filesystem.hpp>
 #include <boost/log/trivial.hpp>
@@ -196,41 +195,27 @@ std::string variant_name(int variant)
 
 namespace {
 
-// Variant 6: layer ranges of ALTERNATE_EVERY layers, alternating CCW / CW, starting CCW at the first layer.
-void add_alternating_ranges(ModelObject *obj, double layer_h, double first_layer_h)
-{
-    using namespace unify_walltest;
-    const int n   = ALTERNATE_EVERY;
-    auto      zlo = [&](int i) { return i == 0 ? 0. : first_layer_h + (i - 1) * layer_h; };
-    auto      zhi = [&](int i) { return first_layer_h + i * layer_h; };
-    obj->layer_config_ranges.clear();
-    for (int g = 0; g < 10000; ++g) {
-        const double lo = zlo(g * n), hi = zhi(g * n + n - 1);
-        ModelConfig &rc = obj->layer_config_ranges[t_layer_height_range(lo, hi)];
-        rc.set_key_value("layer_height", new ConfigOptionFloat(layer_h));
-        rc.set_key_value("wall_direction", new ConfigOptionEnum<WallDirection>(
-                                               g % 2 == 0 ? WallDirection::CounterClockwise : WallDirection::Clockwise));
-        if (hi >= TOWER_HEIGHT) break;
-    }
-}
-
-void apply_variant(ModelObject *obj, int variant, double layer_h, double first_layer_h)
+// Per-object settings for each tower (uses the Unify wall direction options from issue #4).
+void apply_variant(ModelObject *obj, int variant)
 {
     auto &cfg = obj->config;
     WallDirection dir = WallDirection::Auto;
-    if (variant == 2) dir = WallDirection::CounterClockwise;
-    if (variant == 3) dir = WallDirection::Clockwise;
-    cfg.set_key_value("wall_direction", new ConfigOptionEnum<WallDirection>(dir));
-
-    // 4 and 5 use Orca's "Reverse on even" with threshold 0 = reverse every even layer regardless of overhang.
-    const bool alternate = (variant == 4 || variant == 5);
-    cfg.set_key_value("overhang_reverse", new ConfigOptionBool(alternate));
-    if (alternate) {
-        cfg.set_key_value("overhang_reverse_threshold", new ConfigOptionFloatOrPercent(0., false));
-        cfg.set_key_value("overhang_reverse_internal_only", new ConfigOptionBool(variant == 5));
+    switch (variant) {
+    case 2: dir = WallDirection::CounterClockwise; break;
+    case 3: dir = WallDirection::Clockwise; break;
+    case 4:
+    case 5: dir = WallDirection::AlternateEveryLayer; break;
+    case 6: dir = WallDirection::AlternateEveryN; break;
+    default: break;
     }
+    cfg.set_key_value("wall_direction", new ConfigOptionEnum<WallDirection>(dir));
+    cfg.set_key_value("overhang_reverse", new ConfigOptionBool(false));
+    cfg.set_key_value("wall_direction_start_cw", new ConfigOptionBool(false));
+    cfg.set_key_value("wall_direction_outer", new ConfigOptionBool(variant != 5)); // 5 = inner walls only
+    cfg.set_key_value("wall_direction_inner", new ConfigOptionBool(true));
+    cfg.set_key_value("wall_direction_holes", new ConfigOptionBool(true));
     if (variant == 6)
-        add_alternating_ranges(obj, layer_h, first_layer_h);
+        cfg.set_key_value("wall_direction_alternate_layers", new ConfigOptionInt(unify_walltest::ALTERNATE_EVERY));
 }
 
 } // namespace
@@ -261,18 +246,12 @@ void unify_calib_wall_direction(Plater *plater)
     }
     plater->load_files(files, LoadStrategy::LoadModel, false);
 
-    const auto &print_cfg = wxGetApp().preset_bundle->prints.get_edited_preset().config;
-    double layer_h       = print_cfg.opt_float("layer_height");
-    double first_layer_h = print_cfg.opt_float("initial_layer_print_height");
-    if (layer_h <= 0) layer_h = 0.2;
-    if (first_layer_h <= 0) first_layer_h = layer_h;
-
     std::vector<size_t> changed;
     auto &objects = plater->model().objects;
     for (size_t i = 0; i < objects.size(); ++i) {
         for (int v = 1; v <= VARIANT_COUNT; ++v) {
             if (objects[i]->name.rfind(variant_name(v), 0) == 0) {
-                apply_variant(objects[i], v, layer_h, first_layer_h);
+                apply_variant(objects[i], v);
                 changed.push_back(i);
                 break;
             }
