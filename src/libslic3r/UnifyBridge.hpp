@@ -4,13 +4,12 @@
 // Unify Slicer (issue #3, phase 3): smarter automatic bridge direction.
 // For each bridge area, try every 5 degrees and keep the direction where every bridge line lands on
 // solid material at both ends with the shortest longest unsupported span. If no direction
-// anchors every line, the one anchoring the most lines wins and the area is flagged.
+// anchors every line, the one anchoring the most lines wins.
 
 #include "BoundingBox.hpp"
 #include "ClipperUtils.hpp"
 #include "ExPolygon.hpp"
 #include "Line.hpp"
-#include "UnifyBridgeInfo.hpp"
 
 #include <cmath>
 #include <vector>
@@ -21,7 +20,6 @@ namespace unify_bridge {
 constexpr int    AUTO_STEP_DEG   = 5;
 constexpr double MIN_ANCHOR_MM   = 2.0;  // check up to 2 mm past each line end for solid below ...
 constexpr double ANCHOR_LINES    = 1.5;  // ... but no further than 1.5 line widths (thin walls are still anchors)
-constexpr double WARN_SPAN_MM    = 40.0; // warn above this longest span
 constexpr double FULL_ANCHORED   = 0.97; // share of anchored lines that counts as "every line" (edge noise)
 constexpr double SPAN_TIE_MM     = 0.5;  // spans this close count as equal
 
@@ -154,30 +152,6 @@ private:
     Polygons                 m_clip;
     std::vector<BoundingBox> m_lower_bb;
 };
-
-inline UnifyBridgeInfo make_info(const ExPolygons &bridge, double print_z, const Eval &e, bool custom)
-{
-    UnifyBridgeInfo info;
-    info.print_z      = print_z;
-    info.angle_deg    = e.angle * 180. / M_PI;
-    info.span_mm      = e.span;
-    info.anchored     = e.anchored;
-    info.custom_angle = custom;
-    double area = 0.;
-    Vec2d  centre(0., 0.);
-    for (const ExPolygon &ex : bridge) {
-        const double a = std::abs(ex.area());
-        area += a;
-        centre += a * ex.contour.centroid().cast<double>();
-    }
-    if (area > 0.)
-        centre /= area;
-    info.area_mm2 = unscale<double>(unscale<double>(area));
-    info.x        = unscale<double>(centre.x());
-    info.y        = unscale<double>(centre.y());
-    info.flagged  = e.valid && (e.span > WARN_SPAN_MM || e.anchored < FULL_ANCHORED);
-    return info;
-}
 
 } // namespace unify_bridge
 } // namespace Slic3r

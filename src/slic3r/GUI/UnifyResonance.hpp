@@ -4,7 +4,7 @@
 // Unify Slicer: Snapmaker U1 resonance fast check results (issue #1, phase 2).
 // Watches the printer console through Moonraker for the UNIFY_FASTCHECK_BEGIN/END markers that the
 // fast-check block in the U1 start G-code emits, parses the input shaper results, and shows either a
-// short "OK" notice or a warning dialog with Pause / Cancel print / Continue and a 15 s auto-continue.
+// short "OK" notice or a warning dialog with Pause / Cancel print / Continue and a 25 s auto-continue.
 
 #include <map>
 #include <string>
@@ -32,8 +32,8 @@ constexpr double MIN_MAX_ACCEL       = 5000.0; // mm/s^2
 constexpr double SHIFT_PCT           = 15.0;   // change vs. baseline median
 constexpr int    BASELINE_KEEP       = 5;      // normal results kept per axis
 constexpr int    BASELINE_MIN        = 3;      // results needed before the shift rule applies
-constexpr int    WARN_TIMEOUT_S      = 15;     // abnormal dialog auto-continues after this
-constexpr int    OK_NOTICE_S         = 10;     // OK notice closes after this
+constexpr int    WARN_TIMEOUT_S      = 25;     // abnormal dialog auto-continues after this
+constexpr int    OK_NOTICE_S         = 20;     // OK notice closes after this
 constexpr int    LOG_KEEP            = 30;
 
 struct Fit
