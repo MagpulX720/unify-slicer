@@ -124,8 +124,8 @@ edit("src/slic3r/GUI/MainFrame.cpp",
 # --- #4 Wall direction: alternate every layer / every N layers, start direction, which walls ---
 edit("src/libslic3r/PrintConfig.hpp",
      "    Clockwise,\n    Count,\n};",
-     "    Clockwise,\n    // Unify Slicer: alternating wall direction (issue #4)\n    AlternateEveryLayer,\n    AlternateEveryN,\n    Count,\n};",
-     "AlternateEveryLayer,")
+     "    Clockwise,\n    // Unify Slicer: alternating wall direction (issue #4)\n    AlternateEveryN,\n    Count,\n};",
+     "AlternateEveryN,")
 edit("src/libslic3r/PrintConfig.hpp",
      "    ((ConfigOptionEnum<WallDirection>,  wall_direction))\n",
      "    ((ConfigOptionEnum<WallDirection>,  wall_direction))\n"
@@ -139,13 +139,18 @@ edit("src/libslic3r/PrintConfig.hpp",
 edit("src/libslic3r/PrintConfig.cpp",
      "    { \"cw\",   int(WallDirection::Clockwise)},\n",
      "    { \"cw\",   int(WallDirection::Clockwise)},\n"
-     "    { \"alternate\",   int(WallDirection::AlternateEveryLayer)},\n"
      "    { \"alternate_n\", int(WallDirection::AlternateEveryN)},\n",
-     "int(WallDirection::AlternateEveryLayer)")
+     "int(WallDirection::AlternateEveryN)")
+# "Alternate every layer" was removed (issue #4 note): presets / 3MFs saved with it load as every 2 layers.
+edit("src/libslic3r/PrintConfig.cpp",
+     "void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)\n{\n",
+     "void PrintConfigDef::handle_legacy(t_config_option_key &opt_key, std::string &value)\n{\n"
+     "    // Unify Slicer: \"Alternate every layer\" was removed; load it as \"Alternate every N layers\" (N defaults to 2)\n"
+     "    if (opt_key == \"wall_direction\" && value == \"alternate\")\n"
+     "        value = \"alternate_n\";\n",
+     'Unify Slicer: "Alternate every layer" was removed')
 WALLDIR_DEFS = r'''    // Unify Slicer: alternating wall direction (issue #4)
-    def->enum_values.push_back("alternate");
     def->enum_values.push_back("alternate_n");
-    def->enum_labels.push_back(L("Alternate every layer"));
     def->enum_labels.push_back(L("Alternate every N layers"));
 
     def = this->add("wall_direction_alternate_layers", coInt);
@@ -215,13 +220,13 @@ edit("src/libslic3r/Layer.cpp",
      "config.wall_direction_alternate_layers")
 PG_HELPERS = r'''
 // Unify Slicer: alternating wall direction and which walls it applies to (issue #4).
-// Turns "Alternate every layer / every N layers" into CW or CCW for this layer.
+// Turns "Alternate every N layers" into CW or CCW for this layer.
 static WallDirection unify_resolve_wall_direction(const PrintRegionConfig &cfg, int layer_id)
 {
     const WallDirection wd = cfg.wall_direction.value;
-    if (wd != WallDirection::AlternateEveryLayer && wd != WallDirection::AlternateEveryN)
+    if (wd != WallDirection::AlternateEveryN)
         return wd;
-    const int  n    = wd == WallDirection::AlternateEveryLayer ? 1 : std::max(2, cfg.wall_direction_alternate_layers.value);
+    const int  n    = std::max(2, cfg.wall_direction_alternate_layers.value);
     const bool flip = ((std::max(0, layer_id) / n) % 2) == 1;
     return (cfg.wall_direction_start_cw.value != flip) ? WallDirection::Clockwise : WallDirection::CounterClockwise;
 }
@@ -278,7 +283,7 @@ edit("src/libslic3r/PerimeterGenerator.cpp",
 CM_TOGGLES = r'''
     {   // Unify Slicer: wall direction options (issue #4)
         const WallDirection wd  = config->opt_enum<WallDirection>("wall_direction");
-        const bool          alt = wd == WallDirection::AlternateEveryLayer || wd == WallDirection::AlternateEveryN;
+        const bool          alt = wd == WallDirection::AlternateEveryN;
         toggle_line("wall_direction_alternate_layers", !has_spiral_vase && wd == WallDirection::AlternateEveryN);
         toggle_line("wall_direction_start_cw", !has_spiral_vase && alt);
         for (auto el : {"wall_direction_outer", "wall_direction_inner", "wall_direction_holes"})
@@ -692,13 +697,13 @@ _RES2_DEFS = r'''    // Unify Slicer: resonance check results (issue #1, phase 2
 
     def = this->add("unify_resonance_show_ok", coBool);
     def->label = L("Show resonance check result on every print");
-    def->tooltip = L("Shows a short notice with the input shaping chosen for the print, closing by itself after 10 s.");
+    def->tooltip = L("Shows a short notice with the input shaping chosen for the print, closing by itself after 20 s.");
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionBool(true));
 
     def = this->add("unify_resonance_warn", coBool);
     def->label = L("Warn if resonance looks abnormal");
-    def->tooltip = L("Shows a warning with Pause, Cancel print and Continue when the result looks wrong. Continues by itself after 15 s. Only works while Unify Slicer is open and can reach the printer.");
+    def->tooltip = L("Shows a warning with Pause, Cancel print and Continue when the result looks wrong. Continues by itself after 25 s. Only works while Unify Slicer is open and can reach the printer.");
     def->mode = comSimple;
     def->set_default_value(new ConfigOptionBool(true));
 
@@ -770,12 +775,13 @@ edit("src/slic3r/GUI/MainFrame.cpp",
 # ---------------------------------------------------------------------------------------------
 # Unify Slicer phase 3, #7: auto adaptive layer height for overhangs only
 # ---------------------------------------------------------------------------------------------
-_OL_KEYS = ["unify_overhang_layers", "unify_overhang_layers_min"]
+_OL_KEYS = ["unify_overhang_layers", "unify_overhang_layers_manual_min", "unify_overhang_layers_min"]
 edit("src/libslic3r/PrintConfig.hpp",
      "    ((ConfigOptionFloat,               layer_height))\n    ((ConfigOptionFloat,               mmu_segmented_region_max_width))\n",
      "    ((ConfigOptionFloat,               layer_height))\n"
      "    // Unify Slicer: thinner layers at overhangs (issue #7)\n"
      "    ((ConfigOptionBool,                unify_overhang_layers))\n"
+     "    ((ConfigOptionBool,                unify_overhang_layers_manual_min))\n"
      "    ((ConfigOptionFloat,               unify_overhang_layers_min))\n"
      "    ((ConfigOptionFloat,               mmu_segmented_region_max_width))\n",
      "unify_overhang_layers))")
@@ -786,19 +792,28 @@ edit("src/libslic3r/PrintConfig.cpp",
     def->label = L("Thinner layers at overhangs");
     def->category = L("Quality");
     def->tooltip = L("Automatically prints thinner layers where the model has overhangs (40 degrees from vertical and steeper), "
-                     "down to the minimum below at about 70 degrees, and the normal layer height everywhere else. Flat ceilings and "
-                     "bridges, and very small overhangs, are left alone. The height ramps in and out over a few layers. "
+                     "reaching the thinnest layer at about 70 degrees, and the normal layer height everywhere else. Flat ceilings and "
+                     "bridges, and very small overhangs, are left alone. Every height change goes through at least two in-between "
+                     "layers, and the step down is finished before the overhang starts. "
                      "Objects with a manually edited variable layer height or height range modifiers keep their own layers. "
                      "Not used with a prime tower and more than one object.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("unify_overhang_layers_manual_min", coBool);
+    def->label = L("Set thinnest layer manually");
+    def->category = L("Quality");
+    def->tooltip = L("Off (Auto): the thinnest layer is the printer's Min layer height for the nozzle "
+                     "(Printer settings > Extruder > Layer height limits). On: use the value below instead, "
+                     "for example 0.12 mm if the printer's minimum is thinner than you want.");
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(false));
 
     def = this->add("unify_overhang_layers_min", coFloat);
     def->label = L("Thinnest overhang layer");
     def->category = L("Quality");
-    def->tooltip = L("Thinnest layer used at steep overhangs. The thickest is always the layer height above. "
-                     "It never goes below a safe floor: the larger of the printer's Min layer height and 20% of the nozzle "
-                     "diameter (0.08 mm on a 0.4 mm nozzle). Lower values are raised to that floor when slicing.");
+    def->tooltip = L("Thinnest layer used at steep overhangs when set manually. The thickest is always the layer height above. "
+                     "It can't go below the printer's Min layer height for the nozzle; lower values are raised to it when slicing.");
     def->sidetext = "mm";
     def->min = 0.04;
     def->max = 1.;
@@ -810,11 +825,11 @@ edit("src/libslic3r/PrintConfig.cpp",
      "this->add(\"unify_overhang_layers\", coBool)")
 edit("src/libslic3r/Preset.cpp",
      "    \"layer_height\", \"initial_layer_print_height\", \"wall_loops\",",
-     "    \"layer_height\", \"initial_layer_print_height\", \"unify_overhang_layers\", \"unify_overhang_layers_min\", \"wall_loops\",",
-     "\"unify_overhang_layers\", \"unify_overhang_layers_min\"")
+     "    \"layer_height\", \"initial_layer_print_height\", \"unify_overhang_layers\", \"unify_overhang_layers_manual_min\", \"unify_overhang_layers_min\", \"wall_loops\",",
+     "\"unify_overhang_layers\", \"unify_overhang_layers_manual_min\"")
 edit("src/libslic3r/PrintObject.cpp",
      "               opt_key == \"layer_height\"\n            || opt_key == \"dithering_z_step_size\"\n",
-     "               opt_key == \"layer_height\"\n            || opt_key == \"unify_overhang_layers\"\n            || opt_key == \"unify_overhang_layers_min\"\n            || opt_key == \"dithering_z_step_size\"\n",
+     "               opt_key == \"layer_height\"\n            || opt_key == \"unify_overhang_layers\"\n            || opt_key == \"unify_overhang_layers_manual_min\"\n            || opt_key == \"unify_overhang_layers_min\"\n            || opt_key == \"dithering_z_step_size\"\n",
      "opt_key == \"unify_overhang_layers\"")
 edit("src/libslic3r/PrintObject.cpp", '#include "Print.hpp"\n', '#include "Print.hpp"\n#include "UnifyOverhangLayers.hpp"\n', '#include "UnifyOverhangLayers.hpp"')
 edit("src/libslic3r/PrintObject.cpp",
@@ -826,12 +841,12 @@ edit("src/libslic3r/PrintObject.cpp",
             print_object->config().unify_overhang_layers.value && print_object->print() != nullptr) {
             const Print &print = *print_object->print();
             if (!(print.has_wipe_tower() && print.objects().size() > 1)) {
-                const PrintConfig &pc    = print.config();
-                double             floor = unify_overhang_layers::FLOOR_ABS_MM;
-                for (size_t i = 0; i < pc.nozzle_diameter.values.size(); ++i)
-                    floor = std::max(floor, unify_overhang_layers::safe_floor(pc.min_layer_height.get_at(i), pc.nozzle_diameter.get_at(i)));
-                const double hmax = slicing_parameters.layer_height;
-                const double hmin = std::max({ print_object->config().unify_overhang_layers_min.value, floor, slicing_parameters.min_layer_height });
+                // Auto: the printer's Min layer height for the object's nozzle(s). Manual: the user's value, never below that.
+                const double printer_min = slicing_parameters.min_layer_height;
+                const double hmax        = slicing_parameters.layer_height;
+                const double hmin        = print_object->config().unify_overhang_layers_manual_min.value
+                                               ? std::max(print_object->config().unify_overhang_layers_min.value, printer_min)
+                                               : printer_min;
                 std::vector<unify_overhang_layers::Mesh> meshes;
                 for (const ModelVolume *v : model_object.volumes)
                     if (v->is_model_part())
@@ -850,12 +865,14 @@ edit("src/slic3r/GUI/Tab.cpp",
      "        optgroup->append_single_option_line(\"initial_layer_print_height\",\"quality_settings_layer_height\");\n"
      "        // Unify Slicer: thinner layers at overhangs (issue #7)\n"
      "        optgroup->append_single_option_line(\"unify_overhang_layers\");\n"
+     "        optgroup->append_single_option_line(\"unify_overhang_layers_manual_min\");\n"
      "        optgroup->append_single_option_line(\"unify_overhang_layers_min\");\n",
      "append_single_option_line(\"unify_overhang_layers\")")
 edit("src/slic3r/GUI/ConfigManipulation.cpp",
      "    {   // Unify Slicer: overhang speed by angle (issue #2)\n",
      "    // Unify Slicer: thinner layers at overhangs (issue #7)\n"
-     "    toggle_line(\"unify_overhang_layers_min\", config->opt_bool(\"unify_overhang_layers\"));\n"
+     "    toggle_line(\"unify_overhang_layers_manual_min\", config->opt_bool(\"unify_overhang_layers\"));\n"
+     "    toggle_line(\"unify_overhang_layers_min\", config->opt_bool(\"unify_overhang_layers\") && config->opt_bool(\"unify_overhang_layers_manual_min\"));\n"
      "    {   // Unify Slicer: overhang speed by angle (issue #2)\n",
      "toggle_line(\"unify_overhang_layers_min\"")
 

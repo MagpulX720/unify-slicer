@@ -182,8 +182,8 @@ std::string variant_name(int variant)
     case 1: return "WallDir 1 - Auto";
     case 2: return "WallDir 2 - Counter-clockwise";
     case 3: return "WallDir 3 - Clockwise";
-    case 4: return "WallDir 4 - Alternate every layer";
-    case 5: return "WallDir 5 - Alternate inner walls";
+    case 4: return "WallDir 4 - Alternate every 2 layers";
+    case 5: return "WallDir 5 - Alternate inner walls (every 2)";
     case 6: return "WallDir 6 - Alternate every 3 layers";
     default: return "WallDir";
     }
@@ -204,7 +204,7 @@ void apply_variant(ModelObject *obj, int variant)
     case 2: dir = WallDirection::CounterClockwise; break;
     case 3: dir = WallDirection::Clockwise; break;
     case 4:
-    case 5: dir = WallDirection::AlternateEveryLayer; break;
+    case 5:
     case 6: dir = WallDirection::AlternateEveryN; break;
     default: break;
     }
@@ -214,8 +214,8 @@ void apply_variant(ModelObject *obj, int variant)
     cfg.set_key_value("wall_direction_outer", new ConfigOptionBool(variant != 5)); // 5 = inner walls only
     cfg.set_key_value("wall_direction_inner", new ConfigOptionBool(true));
     cfg.set_key_value("wall_direction_holes", new ConfigOptionBool(true));
-    if (variant == 6)
-        cfg.set_key_value("wall_direction_alternate_layers", new ConfigOptionInt(unify_walltest::ALTERNATE_EVERY));
+    if (variant >= 4) // 4 and 5: every 2 layers, 6: every 3 layers
+        cfg.set_key_value("wall_direction_alternate_layers", new ConfigOptionInt(variant == 6 ? unify_walltest::ALTERNATE_EVERY : 2));
 }
 
 } // namespace
@@ -266,8 +266,8 @@ void unify_calib_wall_direction(Plater *plater)
                     "1 dot: Auto\n"
                     "2 dots: Counter-clockwise\n"
                     "3 dots: Clockwise\n"
-                    "4 dots: Alternate every layer, all walls\n"
-                    "5 dots: Alternate every layer, inner walls only\n"
+                    "4 dots: Alternate every 2 layers, all walls\n"
+                    "5 dots: Alternate every 2 layers, inner walls only\n"
                     "6 dots: Alternate every 3 layers, all walls\n\n"
                     "After printing, compare twist (look down from the top), outer surface texture, the seam, "
                     "the underside of the overhang ledge, and the hole and outer size with calipers (10 mm / 20 mm)."),
