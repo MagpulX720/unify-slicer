@@ -5,7 +5,7 @@
 // Builds a layer height profile that stays at the process layer height everywhere except in the Z bands
 // where the model has overhangs. There the layers get thinner as the overhang gets steeper, down to the
 // printer's min layer height for the nozzle (Auto) or a thinnest layer the user picks (Manual, never below
-// the printer's minimum). Flat ceilings / bridges and tiny overhangs are ignored. Every change of layer
+// the printer's minimum). Flat ceilings / bridges (88 deg and flatter) and tiny overhangs are ignored. Every change of layer
 // height goes through at least two in-between layers, and a step down is finished before the overhang starts.
 
 #include <deque>
@@ -24,7 +24,7 @@ namespace unify_overhang_layers {
 // Hard-coded behaviour (issue #7)
 constexpr double START_DEG       = 40.0; // thinning starts at this overhang angle (0 = vertical wall)
 constexpr double FULL_DEG        = 70.0; // minimum layer height reached here
-constexpr double BRIDGE_DEG      = 80.0; // flatter than this = bridge / ceiling: ignored
+constexpr double BRIDGE_DEG      = 88.0; // flatter than this = flat bridge / ceiling: ignored (80-85 deg overhangs still get the thinnest layers)
 constexpr int    MIN_STEPS       = 2;    // at least this many in-between layers for every height change
 constexpr double MAX_STEP_MM     = 0.04; // ... and more when one step would change the height by more than this
 constexpr double MIN_AREA_MM2    = 4.0;  // overhang area needed inside the window to count
