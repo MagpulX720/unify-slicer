@@ -64,6 +64,11 @@ _n20 = ROOT / "unify" / "apply_unify_nov20.py"
 if _n20.exists():
     exec(compile(_n20.read_text(encoding="utf-8"), str(_n20), "exec"))
 
+# --- Nov 21: Consistent surface on by default, short travel acceleration visible (issue #12) ---
+_n21 = ROOT / "unify" / "apply_unify_nov21.py"
+if _n21.exists():
+    exec(compile(_n21.read_text(encoding="utf-8"), str(_n21), "exec"))
+
 # --- settings box check: short unit texts inside boxes (runs last) ---
 _uic = ROOT / "unify" / "apply_unify_ui_check.py"
 if _uic.exists():
