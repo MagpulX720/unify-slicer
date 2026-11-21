@@ -65,7 +65,30 @@ fi
 cd "$SRC"
 git submodule update --init --remote submodules/Profiles
 git -C submodules/Profiles log -1 --format='Snapmaker profiles: %h %cd'
+# Work-in-progress files Claude is testing before they are pushed (only when ~/unify-build/overlay/USE_OVERLAY exists).
+if [ -f "$WORK/overlay/USE_OVERLAY" ]; then
+  echo "Using local test files from $WORK/overlay"
+  (cd "$WORK/overlay" && find . -type f ! -name USE_OVERLAY -print | while read -r f; do mkdir -p "$SRC/$(dirname "$f")"; cp "$f" "$SRC/$f"; echo "  overlay: $f"; done)
+fi
 python3 unify/apply_unify.py
+
+step "Unify logo (U) for splash screen and app icon"
+# Optional: if anything here fails, the build continues with the Snapmaker logo.
+if "$WORK/venv/bin/python" -c "import PIL" 2>/dev/null || "$WORK/venv/bin/pip" install -q pillow; then
+  "$WORK/venv/bin/python" unify/branding/gen_u.py --apply . || echo "WARNING: U logo step failed - keeping the Snapmaker logo"
+else
+  echo "WARNING: could not install Pillow - keeping the Snapmaker logo"
+fi
+# macOS 26+ reads the app icon from Assets.car; rebuild it from the U glyph (falls back to Icon.icns if this fails).
+if grep -q "Unify U logo" resources/images/splash_app_icon.svg 2>/dev/null; then
+  if xcrun actool resources/AppIcon.icon --compile resources --platform macosx --minimum-deployment-target 10.15 \
+       --target-device mac --app-icon AppIcon --output-partial-info-plist "$WORK/AppIcon-partial.plist" >/dev/null; then
+    echo "App icon (Assets.car) rebuilt with the U logo"
+  else
+    echo "WARNING: actool failed - removing Assets.car so macOS uses Icon.icns (U logo)"
+    rm -f resources/Assets.car
+  fi
+fi
 
 step "Build dependencies (first time only, ~45-90 min)"
 if [ -f "$WORK/.deps_done" ] && [ -d "deps/build/$ARCH/OrcaSlicer_dep" ]; then
@@ -91,6 +114,7 @@ PL="/Applications/Unify Slicer.app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier local.unify.slicer" "$PL"
 codesign --force --deep --sign - "/Applications/Unify Slicer.app"
 xattr -dr com.apple.quarantine "/Applications/Unify Slicer.app" 2>/dev/null || true
+touch "/Applications/Unify Slicer.app"  # refresh Finder/Dock icon cache
 
 step "DONE - Unify Slicer is in your Applications folder"
 echo "UNIFY_BUILD_SUCCESS"
