@@ -24,6 +24,16 @@ _SHORTEN = [
 ]
 _pc = ROOT / "src/libslic3r/PrintConfig.cpp"
 _txt = _pc.read_text(encoding="utf-8")
+
+# Issue #15: "Thinner layers at overhangs" is now "Overhang layer height" (internal key unify_overhang_layers unchanged,
+# so saved presets and projects still load).
+for _old, _new in [
+    ('def->label = L("Thinner layers at overhangs");', 'def->label = L("Overhang layer height");'),
+    ('"hand the object back to Thinner layers at overhangs. "', '"hand the object back to Overhang layer height. "'),
+]:
+    if _old in _txt:
+        _txt = _txt.replace(_old, _new)
+        print(f"  + renamed: {_new.strip()[:60]}")
 for _old, _new in _SHORTEN:
     if _old in _txt:
         _txt = _txt.replace(_old, _new)
