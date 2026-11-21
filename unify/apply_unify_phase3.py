@@ -58,3 +58,8 @@ edit("src/libslic3r/LayerRegion.cpp",
                 }
 """,
      "Unify Slicer: smarter auto direction per bridge area")
+
+# --- Friday Nov 20 build (version 0.9.0 Beta, inner wall slowdown, 10 degree overhang steps, resonance log file) ---
+_n20 = ROOT / "unify" / "apply_unify_nov20.py"
+if _n20.exists():
+    exec(compile(_n20.read_text(encoding="utf-8"), str(_n20), "exec"))
