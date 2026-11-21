@@ -63,3 +63,8 @@ edit("src/libslic3r/LayerRegion.cpp",
 _n20 = ROOT / "unify" / "apply_unify_nov20.py"
 if _n20.exists():
     exec(compile(_n20.read_text(encoding="utf-8"), str(_n20), "exec"))
+
+# --- settings box check: short unit texts inside boxes (runs last) ---
+_uic = ROOT / "unify" / "apply_unify_ui_check.py"
+if _uic.exists():
+    exec(compile(_uic.read_text(encoding="utf-8"), str(_uic), "exec"))
