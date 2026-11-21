@@ -64,6 +64,11 @@ _n20 = ROOT / "unify" / "apply_unify_nov20.py"
 if _n20.exists():
     exec(compile(_n20.read_text(encoding="utf-8"), str(_n20), "exec"))
 
+# --- Nov 21: Overhang layer height transition layers (3 by default, manual 0-10, fewer where they don't fit) ---
+_tr = ROOT / "unify" / "apply_unify_transition.py"
+if _tr.exists():
+    exec(compile(_tr.read_text(encoding="utf-8"), str(_tr), "exec"))
+
 # --- settings box check: short unit texts inside boxes (runs last) ---
 _uic = ROOT / "unify" / "apply_unify_ui_check.py"
 if _uic.exists():
