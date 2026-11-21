@@ -101,8 +101,8 @@ _IW_DEFS = r'''
     def->label = L("Inner wall overhang slowdown");
     def->category = L("Speed");
     def->tooltip = L("Slows down the inner wall that sits right next to an overhanging outer wall. The steeper the overhang, the more of "
-                     "that inner wall hangs out, so it needs to print slower too. Manual: a fixed % of the outer wall speed from the start "
-                     "angle. Auto: starts at the outer wall speed at the start angle and gets slower as the overhang gets steeper, down to "
+                     "that inner wall hangs out, so it needs to print slower too. Manual: a fixed % of the normal inner wall speed from the start "
+                     "angle. Auto: starts at the normal inner wall speed at the start angle and gets slower as the overhang gets steeper, down to "
                      "the steepest % at bridge angles. Angles are measured from vertical (0 = straight wall), like the other overhang settings.");
     def->enum_keys_map = &ConfigOptionEnum<UnifyInnerWallSlowdown>::get_enum_values();
     def->enum_values.push_back("off");
@@ -127,8 +127,8 @@ _IW_DEFS = r'''
     def = this->add("unify_inner_wall_slowdown_pct", coPercent);
     def->label = L("Inner wall speed");
     def->category = L("Speed");
-    def->tooltip = L("Manual mode: speed of the slowed inner wall, as a % of the outer wall speed.");
-    def->sidetext = L("% of outer wall");
+    def->tooltip = L("Manual mode: speed of the slowed inner wall, as a % of its normal inner wall speed.");
+    def->sidetext = L("% of inner wall speed");
     def->min = 5;
     def->max = 100;
     def->mode = comAdvanced;
@@ -137,7 +137,7 @@ _IW_DEFS = r'''
     def = this->add("unify_inner_wall_slowdown_auto_min", coPercent);
     def->label = L("Auto: steepest speed");
     def->category = L("Speed");
-    def->tooltip = L("Auto mode, optional: slowest inner wall speed at the steepest overhangs, as a % of the outer wall speed. 0 = automatic (40%).");
+    def->tooltip = L("Auto mode, optional: slowest inner wall speed at the steepest overhangs, as a % of the normal inner wall speed. 0 = automatic (40%).");
     def->sidetext = L("% (0 = auto)");
     def->min = 0;
     def->max = 100;
@@ -220,14 +220,14 @@ edit("src/libslic3r/GCode.cpp", '#include "UnifyOverhang.hpp"\n', '#include "Uni
 edit("src/libslic3r/GCode.cpp",
      "    double F = speed * 60; // convert mm/sec to mm/min\n",
      r"""    // Unify Slicer: inner wall overhang slowdown - the inner wall next to an overhanging outer wall prints at a
-    // % of the outer wall speed (works with or without Orca's overhang speed)
+    // % of its normal inner wall speed (works with or without Orca's overhang speed)
     if (m_config.unify_inner_wall_slowdown.value != UnifyInnerWallSlowdown::Off && path.role() == erPerimeter &&
         !this->on_first_layer() && m_layer != nullptr && m_layer->lower_layer != nullptr) {
         static thread_local unify_inner_wall::LayerCache unify_iw_cache;
-        double outer_ref = this->process_flow_value(m_config.outer_wall_speed);
-        if (outer_ref <= 0.)
-            outer_ref = speed;
-        if (unify_inner_wall::apply(new_points, path, *m_layer, speed, outer_ref,
+        double inner_ref = this->process_flow_value(m_config.inner_wall_speed); // the inner wall's normal speed
+        if (inner_ref <= 0.)
+            inner_ref = speed;
+        if (unify_inner_wall::apply(new_points, path, *m_layer, speed, inner_ref,
                                     m_config.unify_inner_wall_slowdown.value == UnifyInnerWallSlowdown::Manual,
                                     m_config.unify_inner_wall_slowdown_angle.value, m_config.unify_inner_wall_slowdown_pct.value,
                                     m_config.unify_inner_wall_slowdown_auto_min.value, unify_iw_cache))

@@ -25,7 +25,7 @@ constexpr double BORDER_FACTOR       = 1.6;  // only the inner wall within ~1.6 
 
 inline double rad2deg(double r) { return r * 180.0 / 3.14159265358979323846; }
 
-// % of the outer wall speed for an overhang of `angle` degrees.
+// % of the normal inner wall speed for an overhang of `angle` degrees.
 // manual: fixed pct. auto: 100 % at the start angle, falling to the steepest % at the bridge angle.
 inline double speed_pct(bool manual, double angle, double start, double manual_pct, double auto_min_pct, double bridge_angle)
 {
@@ -48,9 +48,9 @@ struct LayerCache
 // Caps the speed of the points of an inner wall path. `pts` is the estimator output (may be empty, then the path's
 // own points are used). Returns true and replaces `pts` when any point was slowed.
 inline bool apply(std::vector<ProcessedPoint> &pts, const ExtrusionPath &path, const Layer &layer, double path_speed,
-                  double outer_speed, bool manual, double start_angle, double manual_pct, double auto_min_pct, LayerCache &cache)
+                  double inner_speed, bool manual, double start_angle, double manual_pct, double auto_min_pct, LayerCache &cache)
 {
-    if (layer.lower_layer == nullptr || path.polyline.points.size() < 2 || path.height <= 0.f || path.width <= 0.f || outer_speed <= 0.)
+    if (layer.lower_layer == nullptr || path.polyline.points.size() < 2 || path.height <= 0.f || path.width <= 0.f || inner_speed <= 0.)
         return false;
     if (cache.layer != &layer || std::abs(cache.z - layer.print_z) > 1e-6 || cache.n_cur != layer.lslices.size() ||
         cache.n_low != layer.lower_layer->lslices.size()) {
@@ -103,7 +103,7 @@ inline bool apply(std::vector<ProcessedPoint> &pts, const ExtrusionPath &path, c
         const double angle = rad2deg(std::atan2(stick_out, h));
         if (angle + 1e-6 < start_angle)
             continue;
-        const double v = std::max(SPEED_FLOOR, outer_speed * speed_pct(manual, angle, start_angle, manual_pct, auto_min_pct, bridge_angle) / 100.);
+        const double v = std::max(SPEED_FLOOR, inner_speed * speed_pct(manual, angle, start_angle, manual_pct, auto_min_pct, bridge_angle) / 100.);
         if (v < double(q.speed) - 0.5) {
             q.speed = float(v);
             changed = true;
