@@ -79,6 +79,11 @@ _td = ROOT / "unify" / "apply_unify_tuned_defaults.py"
 if _td.exists():
     exec(compile(_td.read_text(encoding="utf-8"), str(_td), "exec"))
 
+# --- Nov 22: Adaptive wall generator (issue #19) ---
+_aw = ROOT / "unify" / "apply_unify_adaptive_walls.py"
+if _aw.exists():
+    exec(compile(_aw.read_text(encoding="utf-8"), str(_aw), "exec"))
+
 # --- settings box check: short unit texts inside boxes (runs last) ---
 _uic = ROOT / "unify" / "apply_unify_ui_check.py"
 if _uic.exists():
