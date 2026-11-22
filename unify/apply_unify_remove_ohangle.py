@@ -1,4 +1,4 @@
-# Unify Slicer: Overhang speed by angle removed (Nov 22, owner's call: overkill). Runs from apply_unify_phase3.py.
+# Unify Slicer: Overhang speed by angle removed (Nov 22, owner's call: overkill), plus issue #18 tip. Runs from apply_unify_phase3.py.
 # The settings page groups, the filament auto-fill inputs and the slicing step come out; overhang speeds go back to
 # Orca's own overhang % speeds. The setting keys stay defined (hidden) so presets and 3MFs that hold them still load.
 import re
@@ -44,3 +44,25 @@ edit("src/libslic3r/GCode.cpp",
      "        if (m_config.unify_overhang_angle_mode.value != UnifyOverhangMode::Off) {\n",
      "        if (false) { // Unify Slicer: Overhang speed by angle removed (Nov 22) - Orca's overhang % speeds are used\n",
      "Overhang speed by angle removed (Nov 22) - Orca")
+
+# --- Issue #18 (Nov 22): Overhang layer height works best with Reverse on even -------------------------------
+print("Overhang layer height: Reverse on even tip (issue #18)")
+edit("src/libslic3r/PrintConfig.cpp",
+     "                     \"hand the object back to Thinner layers at overhangs. \"\n",
+     "                     \"hand the object back to Thinner layers at overhangs. \"\n"
+     "                     \"Works best with Reverse on even turned on (Quality > Overhangs). \"\n",
+     "Works best with Reverse on even turned on")
+edit("src/libslic3r/PrintObject.cpp",
+     "    m_print->set_status(15, L(\"Generating walls\"));\n",
+     "    m_print->set_status(15, L(\"Generating walls\"));\n"
+     "    // Unify Slicer: Overhang layer height works best with Reverse on even (issue #18) - a notice only, changes nothing\n"
+     "    if (m_config.unify_overhang_layers.value) {\n"
+     "        bool reverse_off = false;\n"
+     "        for (size_t region_id = 0; region_id < this->num_printing_regions(); ++ region_id)\n"
+     "            if (! this->printing_region(region_id).config().overhang_reverse.value)\n"
+     "                reverse_off = true;\n"
+     "        if (reverse_off)\n"
+     "            this->active_step_add_warning(PrintStateBase::WarningLevel::NON_CRITICAL,\n"
+     "                L(\"Overhang layer height works best with Reverse on even turned on (Quality > Overhangs).\"));\n"
+     "    }\n",
+     "Overhang layer height works best with Reverse on even (issue #18)")
