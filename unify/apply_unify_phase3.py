@@ -74,6 +74,11 @@ _ro = ROOT / "unify" / "apply_unify_remove_ohangle.py"
 if _ro.exists():
     exec(compile(_ro.read_text(encoding="utf-8"), str(_ro), "exec"))
 
+# --- Nov 22: tuned defaults for the Unify profiles + Silk PLA and Eryone presets ---
+_td = ROOT / "unify" / "apply_unify_tuned_defaults.py"
+if _td.exists():
+    exec(compile(_td.read_text(encoding="utf-8"), str(_td), "exec"))
+
 # --- settings box check: short unit texts inside boxes (runs last) ---
 _uic = ROOT / "unify" / "apply_unify_ui_check.py"
 if _uic.exists():
