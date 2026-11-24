@@ -60,7 +60,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/deps/build/OrcaSlicer_dep
-          key: unify-deps-win64-${{ hashFiles('deps/**') }}
+          key: unify-deps-win64-${{ hashFiles('deps/CMakeLists.txt', 'deps/*/*.cmake', 'deps/*/CMakeLists.txt', 'deps/*/*.patch') }}
 
       - name: Build dependencies (first run only, ~1-2 h)
         if: steps.deps.outputs.cache-hit != 'true'
