@@ -1,0 +1,109 @@
+name: Build Unify Slicer (Windows)
+
+on:
+  push:
+    branches: [ main, unify ]
+    paths-ignore: [ 'doc/**', 'docs/**', '**.md', '.github/workflows/unify_mac.yml' ]
+  workflow_dispatch:
+    inputs:
+      latest_profiles:
+        description: 'Pull the newest official Snapmaker profiles before building'
+        type: boolean
+        default: true
+
+concurrency:
+  group: unify-win-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 360
+    steps:
+      - name: Keep LF line endings (Unify patch scripts match exact text)
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          lfs: true
+
+      - name: Apply Unify source changes
+        run: python unify/apply_unify.py
+
+      - name: Use newest official Snapmaker profiles
+        if: ${{ github.event_name == 'push' || inputs.latest_profiles }}
+        shell: bash
+        run: |
+          git submodule update --init --remote submodules/Profiles
+          git -C submodules/Profiles log -1 --format='Snapmaker profiles: %H %cd'
+
+      - name: Unify U logo (PNGs, splash, Windows .ico)
+        continue-on-error: true
+        run: |
+          python -m pip install --quiet pillow
+          python unify/branding/gen_u.py --apply .
+          python -c "from PIL import Image; d='resources/images/'; [Image.open(d+n+'.png').convert('RGBA').save(d+n+'.ico', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)]) for n in ('Snapmaker_Orca','Snapmaker_OrcaTitle')]; print('U logo: Windows .ico written')"
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.28.0"
+
+      - name: Set up MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore dependency cache
+        id: deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/deps/build/OrcaSlicer_dep
+          key: unify-deps-win64-${{ hashFiles('deps/**') }}
+
+      - name: Build dependencies (first run only, ~1-2 h)
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: |
+          choco install strawberryperl -y
+          .\build_release_vs2022.bat deps
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build Unify Slicer
+        env:
+          WindowsSdkDir: 'C:\Program Files (x86)\Windows Kits\10\'
+          WindowsSDKVersion: '10.0.26100.0\'
+        run: |
+          .\build_release_vs2022.bat slicer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package portable zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d build/Snapmaker_Orca
+          VER=$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          rm -rf pkg && mkdir -p pkg
+          cp -R build/Snapmaker_Orca "pkg/Unify Slicer"
+          EXE=$(cd "pkg/Unify Slicer" && ls *.exe | grep -i -v -E 'gcodeviewer|validator|uninstall' | head -1)
+          printf 'Unify Slicer (beta) for Windows x64\r\n\r\nStart Unify Slicer by double-clicking %s in this folder.\r\nWindows SmartScreen may warn because the app is not signed: click More info, then Run anyway.\r\nSettings and presets are shared with Snapmaker Orca on this PC (same data folder).\r\n' "$EXE" > "pkg/Unify Slicer/README - Start here.txt"
+          (cd pkg && "/c/Program Files/7-Zip/7z.exe" a -tzip "../Unify_Slicer_Windows_x64_${VER}_portable.zip" "Unify Slicer")
+          ls -la *.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Unify_Slicer_Windows_x64_${{ env.VER }}
+          path: Unify_Slicer_Windows_*.zip
+
+      - name: Add to the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: unify-${{ env.VER }}
+          name: Unify Slicer ${{ env.VER }}
+          files: Unify_Slicer_Windows_*.zip
+          append_body: true
+          body: |
+            Windows x64: download the portable zip, unzip it anywhere, and run the .exe inside the "Unify Slicer" folder (see "README - Start here.txt").
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
