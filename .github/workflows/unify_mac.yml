@@ -3,7 +3,7 @@ name: Build Unify Slicer (macOS)
 on:
   push:
     branches: [ main, unify ]
-    paths-ignore: [ 'doc/**', 'docs/**', '**.md' ]
+    paths-ignore: [ 'doc/**', 'docs/**', '**.md', '.github/workflows/unify_windows.yml', '.github/workflows/unify_mac.yml' ]
   workflow_dispatch:
     inputs:
       arch:
